@@ -5,7 +5,8 @@ MatrixPanel_I2S_DMA* dma_display = nullptr;
 
 // Dùng VirtualMatrixPanel_T để map đúng layout 3 hàng x 2 cột.
 // Với mô tả của bạn (mỗi hàng đi trái->phải), thường wiring sẽ hợp với *_ZZ.
-static VirtualMatrixPanel_T<CHAIN_TOP_LEFT_DOWN_ZZ>* virtual_display = nullptr;
+// Layout bạn mô tả là serpentine theo hàng: → ← →  (hàng 2 bị đảo chiều)
+static VirtualMatrixPanel_T<CHAIN_TOP_LEFT_DOWN>* virtual_display = nullptr;
 
 uint16_t LED_COLOR_BLACK;
 uint16_t LED_COLOR_WHITE;
@@ -54,7 +55,7 @@ void ledMatrixInit() {
   dma_display->clearScreen();
 
   if (!virtual_display) {
-    virtual_display = new VirtualMatrixPanel_T<CHAIN_TOP_LEFT_DOWN_ZZ>(
+    virtual_display = new VirtualMatrixPanel_T<CHAIN_TOP_LEFT_DOWN>(
       VDISP_NUM_ROWS, VDISP_NUM_COLS, PANEL_RES_X, PANEL_RES_Y
     );
     virtual_display->setDisplay(*dma_display);
@@ -112,7 +113,30 @@ static float clampFloat(float value, float low, float high) {
   return value;
 }
 
-void ledMatrixShowMultiLine(const String lines[], const float fontSizes[], int lineCount, int boardCount) {
+uint16_t ledMatrixParseColor(const String& hex, uint16_t fallback) {
+  String s = hex;
+  s.trim();
+  if (s.startsWith("#")) s.remove(0, 1);
+  if (s.length() != 6) return fallback;
+
+  char buf[7];
+  s.toCharArray(buf, sizeof(buf));
+  char* endPtr = nullptr;
+  uint32_t rgb = strtoul(buf, &endPtr, 16);
+  if (endPtr == buf) return fallback;
+
+  uint8_t r = (rgb >> 16) & 0xFF;
+  uint8_t g = (rgb >> 8) & 0xFF;
+  uint8_t b = rgb & 0xFF;
+
+  // Tự tính 565, không phụ thuộc dma_display
+  uint16_t c = ((r & 0xF8) << 8) |
+               ((g & 0xFC) << 3) |
+               (b >> 3);
+  return c;
+}
+
+void ledMatrixShowMultiLine(const String lines[], const float fontSizes[], const uint16_t colors[], int lineCount, int boardCount) {
   if (!dma_display || lineCount <= 0) return;
   Adafruit_GFX* draw = (virtual_display != nullptr) ? (Adafruit_GFX*)virtual_display : (Adafruit_GFX*)dma_display;
 
@@ -135,8 +159,7 @@ void ledMatrixShowMultiLine(const String lines[], const float fontSizes[], int l
   }
 
   int heights[maxVisibleLines] = {0, 0, 0, 0, 0};
-  int totalTextHeight = 0;
-  const int lineSpacing = 1;
+  int textHeightSum = 0;
 
   for (int i = 0; i < visibleCount; i++) {
     const int idx = lineIndexes[i];
@@ -146,10 +169,13 @@ void ledMatrixShowMultiLine(const String lines[], const float fontSizes[], int l
     uint16_t w, h;
     draw->getTextBounds(lines[idx], 0, 0, &x1, &y1, &w, &h);
     heights[i] = static_cast<int>(h);
-    totalTextHeight += heights[i];
+    textHeightSum += heights[i];
   }
 
-  totalTextHeight += (visibleCount - 1) * lineSpacing;
+  // Tự tính khoảng cách dòng theo chiều cao chữ để nhìn rõ hơn
+  const int avgH = (visibleCount > 0) ? max(1, textHeightSum / visibleCount) : 1;
+  const int lineSpacing = clampInt(avgH / 4, 2, 12); // ~25% chiều cao chữ, min 2px
+  int totalTextHeight = textHeightSum + (visibleCount - 1) * lineSpacing;
 
   float scale = 1.0f;
   const int availableH = draw->height();
@@ -163,7 +189,6 @@ void ledMatrixShowMultiLine(const String lines[], const float fontSizes[], int l
   if (top < 0) top = 0;
 
   dma_display->clearScreen();
-  draw->setTextColor(LED_COLOR_GREEN);
 
   int cursorTop = top;
   for (int i = 0; i < visibleCount; i++) {
@@ -176,15 +201,18 @@ void ledMatrixShowMultiLine(const String lines[], const float fontSizes[], int l
     uint16_t w, h;
     draw->getTextBounds(lines[idx], 0, 0, &x1, &y1, &w, &h);
 
-    int x = (totalWidth - static_cast<int>(w)) / 2;
-    if (x < 0) x = 0;
+    // Căn trái với một chút margin, không căn giữa nữa
+    const int xMargin = 4;
+    int x = xMargin;
 
     int baselineY = cursorTop - y1;
     if (baselineY < 0) baselineY = 0;
 
+    uint16_t c = colors ? colors[idx] : LED_COLOR_GREEN;
+    draw->setTextColor(c);
     draw->setCursor(x, baselineY);
     draw->print(lines[idx]);
 
-    cursorTop += (int)h + lineSpacing;
+    cursorTop += (int)h + (int)((float)lineSpacing * scale);
   }
 }

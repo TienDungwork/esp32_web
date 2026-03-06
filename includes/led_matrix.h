@@ -45,5 +45,7 @@ extern uint16_t LED_COLOR_CYAN;
 void ledMatrixInit();
 void ledMatrixShowCenterText(const String& text, uint16_t color, int y = 8);
 void ledMatrixTestBasic();
-void ledMatrixShowMultiLine(const String lines[], const float fontSizes[], int lineCount, int boardCount);
+void ledMatrixShowMultiLine(const String lines[], const float fontSizes[], const uint16_t colors[], int lineCount, int boardCount);
 int ledMatrixGetMaxBoardCount();
+
+uint16_t ledMatrixParseColor(const String& hex, uint16_t fallback);

@@ -7,6 +7,11 @@
 
 #include "network.h"
 #include "led_matrix.h"
+#include "device_control.h"
+#include "printer.h"
+#include "speech.h"
+
+#include <HTTPUpdate.h>
 
 WebServer server(80);
 
@@ -295,6 +300,13 @@ static void handleLedConfig() {
 
   String lines[5] = {"", "", "", "", ""};
   float fontSizes[5] = {1.6f, 1.6f, 1.6f, 1.6f, 1.6f};
+  uint16_t colors[5] = {
+    LED_COLOR_GREEN,
+    LED_COLOR_GREEN,
+    LED_COLOR_GREEN,
+    LED_COLOR_GREEN,
+    LED_COLOR_GREEN
+  };
 
   auto normalizeFontSize = [](float value) {
     if (value <= 0.0f) return 1.6f;
@@ -307,12 +319,16 @@ static void handleLedConfig() {
     int lineNumber = item["line"] | 0;
     if (lineNumber < 1 || lineNumber > 5) continue;
 
-    lines[lineNumber - 1] = item["text"].as<String>();
+    String fixed = item["fixed"] | "";
+    String text = item["text"] | "";
+    lines[lineNumber - 1] = fixed + text;
     float receivedSize = item["fontSize"] | 1.6f;
     fontSizes[lineNumber - 1] = normalizeFontSize(receivedSize);
+    String colorHex = item["color"] | "";
+    colors[lineNumber - 1] = ledMatrixParseColor(colorHex, LED_COLOR_GREEN);
   }
 
-  ledMatrixShowMultiLine(lines, fontSizes, 5, boardCount);
+  ledMatrixShowMultiLine(lines, fontSizes, colors, 5, boardCount);
 
   DynamicJsonDocument resp(256);
   resp["success"] = true;
@@ -324,25 +340,310 @@ static void handleLedConfig() {
   server.send(200, "application/json", out);
 }
 
+// ══════════════════════════════════════════════════
+//  Barrier Control
+// ══════════════════════════════════════════════════
+static void handleBarrierControl() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+
+  String body = server.arg("plain");
+  if (body.length() == 0) {
+    server.send(400, "application/json", "{\"error\":\"No data provided\"}");
+    return;
+  }
+
+  DynamicJsonDocument doc(256);
+  if (deserializeJson(doc, body) != DeserializationError::Ok) {
+    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+    return;
+  }
+
+  String action = doc["action"].as<String>();
+  BarrierState state;
+
+  if (action == "open")       state = BARRIER_OPEN;
+  else if (action == "close") state = BARRIER_CLOSE;
+  else if (action == "pause") state = BARRIER_PAUSE;
+  else {
+    server.send(400, "application/json", "{\"error\":\"Invalid action. Use: open, close, pause\"}");
+    return;
+  }
+
+  barrierControl(state);
+
+  DynamicJsonDocument resp(128);
+  resp["success"] = true;
+  resp["state"] = action;
+  String out;
+  serializeJson(resp, out);
+  server.send(200, "application/json", out);
+}
+
+// ══════════════════════════════════════════════════
+//  Traffic Light Control
+// ══════════════════════════════════════════════════
+static void handleTrafficLight() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+
+  String body = server.arg("plain");
+  if (body.length() == 0) {
+    server.send(400, "application/json", "{\"error\":\"No data provided\"}");
+    return;
+  }
+
+  DynamicJsonDocument doc(256);
+  if (deserializeJson(doc, body) != DeserializationError::Ok) {
+    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+    return;
+  }
+
+  String stateStr = doc["state"].as<String>();
+  TrafficLightState state;
+
+  if (stateStr == "off")           state = TRAFFIC_OFF;
+  else if (stateStr == "green")    state = TRAFFIC_GREEN;
+  else if (stateStr == "red")      state = TRAFFIC_RED;
+  else if (stateStr == "yellow")   state = TRAFFIC_YELLOW;
+  else if (stateStr == "red_flash") state = TRAFFIC_RED_FLASH;
+  else {
+    server.send(400, "application/json", "{\"error\":\"Invalid state. Use: off, green, red, yellow, red_flash\"}");
+    return;
+  }
+
+  trafficLightControl(state);
+
+  DynamicJsonDocument resp(128);
+  resp["success"] = true;
+  resp["state"] = stateStr;
+  String out;
+  serializeJson(resp, out);
+  server.send(200, "application/json", out);
+}
+
+// ══════════════════════════════════════════════════
+//  Speech Play
+// ══════════════════════════════════════════════════
+static void handleSpeechPlay() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+
+  String body = server.arg("plain");
+  if (body.length() == 0) {
+    server.send(400, "application/json", "{\"error\":\"No data provided\"}");
+    return;
+  }
+
+  DynamicJsonDocument doc(256);
+  if (deserializeJson(doc, body) != DeserializationError::Ok) {
+    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+    return;
+  }
+
+  String tracks = doc["tracks"].as<String>();
+  if (tracks.length() == 0) {
+    server.send(400, "application/json", "{\"error\":\"No tracks specified\"}");
+    return;
+  }
+
+  // Gửi response trước vì playTracks() là blocking
+  DynamicJsonDocument resp(128);
+  resp["success"] = true;
+  resp["tracks"] = tracks;
+  String out;
+  serializeJson(resp, out);
+  server.send(200, "application/json", out);
+
+  playTracks(tracks);
+}
+
+// ══════════════════════════════════════════════════
+//  Printer
+// ══════════════════════════════════════════════════
+static void handlePrinterPrint() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+
+  String body = server.arg("plain");
+  if (body.length() == 0) {
+    server.send(400, "application/json", "{\"error\":\"No data provided\"}");
+    return;
+  }
+
+  DynamicJsonDocument doc(1024);
+  if (deserializeJson(doc, body) != DeserializationError::Ok) {
+    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+    return;
+  }
+
+  String type = doc["type"] | "text";
+  String text = doc["text"].as<String>();
+  bool bold = doc["bold"] | false;
+  int align = doc["align"] | 0;
+
+  printer_reset();
+  printer_set_bold(bold);
+  printer_set_alignment((uint8_t)align);
+
+  if (type == "text") {
+    printer_println(text.c_str());
+  } else if (type == "barcode") {
+    printer_set_barcode_height(80);
+    printer_set_barcode_width(2);
+    printer_print_barcode(text.c_str(), 73);
+  } else if (type == "qrcode") {
+    uint8_t zoom = doc["zoom"] | 6;
+    printer_print_qrcode(text.c_str(), 0, 0, zoom);
+  }
+
+  printer_new_line(3);
+
+  DynamicJsonDocument resp(128);
+  resp["success"] = true;
+  resp["type"] = type;
+  String out;
+  serializeJson(resp, out);
+  server.send(200, "application/json", out);
+}
+
+// ══════════════════════════════════════════════════
+//  OTA Update
+// ══════════════════════════════════════════════════
+static void handleOtaUpdate() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+
+  String body = server.arg("plain");
+  if (body.length() == 0) {
+    server.send(400, "application/json", "{\"error\":\"No data provided\"}");
+    return;
+  }
+
+  DynamicJsonDocument doc(512);
+  if (deserializeJson(doc, body) != DeserializationError::Ok) {
+    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+    return;
+  }
+
+  String url = doc["url"].as<String>();
+  if (url.length() == 0 || !url.startsWith("http")) {
+    server.send(400, "application/json", "{\"error\":\"Invalid URL\"}");
+    return;
+  }
+
+  DynamicJsonDocument resp(128);
+  resp["success"] = true;
+  resp["message"] = "Starting OTA update...";
+  String out;
+  serializeJson(resp, out);
+  server.send(200, "application/json", out);
+  delay(200);
+
+  Serial.println("[OTA] Starting update from: " + url);
+
+  WiFiClient client;
+  t_httpUpdate_return ret = httpUpdate.update(client, url);
+
+  switch (ret) {
+    case HTTP_UPDATE_FAILED:
+      Serial.printf("[OTA] FAILED (%d): %s\n",
+                    httpUpdate.getLastError(),
+                    httpUpdate.getLastErrorString().c_str());
+      break;
+    case HTTP_UPDATE_NO_UPDATES:
+      Serial.println("[OTA] No updates available");
+      break;
+    case HTTP_UPDATE_OK:
+      Serial.println("[OTA] Update success, restarting...");
+      ESP.restart();
+      break;
+  }
+}
+
+// ══════════════════════════════════════════════════
+//  Device Status
+// ══════════════════════════════════════════════════
+static const char* barrierStateToStr(BarrierState s) {
+  switch (s) {
+    case BARRIER_OPEN:  return "open";
+    case BARRIER_CLOSE: return "close";
+    case BARRIER_PAUSE:
+    default:            return "pause";
+  }
+}
+
+static const char* trafficStateToStr(TrafficLightState s) {
+  switch (s) {
+    case TRAFFIC_GREEN:     return "green";
+    case TRAFFIC_RED:       return "red";
+    case TRAFFIC_YELLOW:    return "yellow";
+    case TRAFFIC_RED_FLASH: return "red_flash";
+    case TRAFFIC_OFF:
+    default:                return "off";
+  }
+}
+
+static void handleDeviceStatus() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Cache-Control", "no-cache");
+
+  DynamicJsonDocument doc(512);
+  doc["barrier"] = barrierStateToStr(getBarrierState());
+  doc["traffic_light"] = trafficStateToStr(getTrafficLightState());
+  doc["beam"] = readBeam();
+  doc["uptime_ms"] = millis();
+
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
+}
+
+// CORS preflight handler
+static void handleApiOptions() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+  server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+  server.send(204);
+}
+
 void webServerInit() {
   server.on("/", HTTP_GET, handleRoot);
 
   server.serveStatic("/style.css", LittleFS, "/style.css");
   server.serveStatic("/index.html", LittleFS, "/index.html");
 
+  // ── Network ──
   server.on("/api/network/status", HTTP_GET, handleNetworkStatus);
   server.on("/api/wifi/scan", HTTP_GET, handleWifiScan);
   server.on("/api/wifi/connect", HTTP_POST, handleWifiConnect);
   server.on("/api/lan", HTTP_GET, handleLanGet);
   server.on("/api/lan", HTTP_POST, handleLanPost);
-  // Canonical LED API route.
+
+  // ── LED ──
   server.on("/api/led/config", HTTP_OPTIONS, handleLedConfigOptions);
   server.on("/api/led/config", HTTP_POST, handleLedConfig);
+
+  // ── Device Control ──
+  server.on("/api/barrier/control",       HTTP_OPTIONS, handleApiOptions);
+  server.on("/api/barrier/control",       HTTP_POST,    handleBarrierControl);
+  server.on("/api/traffic-light/control", HTTP_OPTIONS, handleApiOptions);
+  server.on("/api/traffic-light/control", HTTP_POST,    handleTrafficLight);
+  server.on("/api/speech/play",           HTTP_OPTIONS, handleApiOptions);
+  server.on("/api/speech/play",           HTTP_POST,    handleSpeechPlay);
+  server.on("/api/printer/print",         HTTP_OPTIONS, handleApiOptions);
+  server.on("/api/printer/print",         HTTP_POST,    handlePrinterPrint);
+  server.on("/api/ota/update",            HTTP_OPTIONS, handleApiOptions);
+  server.on("/api/ota/update",            HTTP_POST,    handleOtaUpdate);
+  server.on("/api/device/status",         HTTP_GET,     handleDeviceStatus);
+
   server.onNotFound(handleNotFound);
 
   server.begin();
   Serial.println("WebServer started");
-  Serial.println("LED API endpoint: POST /api/led/config");
+  Serial.println("API endpoints:");
+  Serial.println("  POST /api/led/config");
+  Serial.println("  POST /api/barrier/control");
+  Serial.println("  POST /api/traffic-light/control");
+  Serial.println("  POST /api/speech/play");
+  Serial.println("  POST /api/printer/print");
+  Serial.println("  POST /api/ota/update");
+  Serial.println("  GET  /api/device/status");
 }
 
 void webServerHandleClient() {

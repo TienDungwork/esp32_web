@@ -1,0 +1,46 @@
+/* CŨ
+Server: {"code":1,"message":"Connected","device_type":"pc","status":"0"}
+Client: gửi thông tin các gói thiết bị
+        {"code":1,"message":"","device_type":101,"status":0}
+        {"code":1,"message":"","device_type":3,"status":0}
+        {"code":1,"message":"","device_type":4,"status":0}
+        {"code":1,"message":"","device_type":6,"status":0}
+
+
+Server: {"code":2,"message":"Ping","device_type":"pc","status":"0"}
+Client: {"code":2,"message":"Pong","device_type":"esp32","status":"0"}
+
+
+Server {"code":201,"message":{"plate_display_addr":"0002","plate_info":"29A1234","message_display_addr":"0003","message_info":"go"},"device_type":"led_display","status":"0"}
+
+   
+
+Client {"code":301,"message":"0000001","device_type":"loadcell","status":"0"}
+
+
+Server {"code":401,"message":"OPEN","device_type":"barrier","status":"0"}
+Server {"code":401,"message":"CLOSE","device_type":"barrier","status":"0"}
+Server {"code":401,"message":"PAUSE","device_type":"barrier","status":"0"}
+
+
+Server {"code":501,"message":"OFF","device_type":"traffic_light","status":"0"}
+Server {"code":501,"message":"GREEN","device_type":"traffic_light","status":"0"}
+Server {"code":501,"message":"RED","device_type":"traffic_light","status":"0"}
+Server {"code":501,"message":"YELLOW","device_type":"traffic_light","status":"0"}
+Server {"code":501,"message":"RED_FLASH","device_type":"traffic_light","status":"0"}
+
+
+{"code":601,"message":"E28068940000402718901234","device_type":"esp32","status":"ok"}
+{"code":701,"message":"Xe tải A - Tài xế B","device_type":"esp32","status":"ok"}
+{"code":801,"message":"iVBORw0KGgoAAAANSUhEUg...","device_type":"esp32","status":"ok"}
+{"code":901,"message":"1","device_type":"esp32","status":"ok"}
+
+
+Client {"code":1001,"message":"0","device_type":"ir_beam","status":"0"}
+
+
+Client {"code":1101,"message":"0002010102113","device_type":"qrcode","status":"0"}
+
+*/
+
+Server -> Speak: {"Code":101,"Message":"1,2,3,go,4,5,6,sad","Status":0,"DeviceType":0,"CreatedAt":"2025-07-24T16:32:23.9924443Z","IndexInPacket":0}<<EOF>

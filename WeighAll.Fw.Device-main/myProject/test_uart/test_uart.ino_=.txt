@@ -1,0 +1,40 @@
+#include <Arduino.h>
+#include "pin_config.h"
+
+HardwareSerial SerialPort1(1); // UART2
+char DATA[256] = {0};
+String rs232_input = "";
+String buffer = ""; // Declare buffer as a global String
+uint32_t temp = 0;
+uint32_t CycleTime = 0;
+
+void setup()
+{
+    Serial.begin(9600);
+    SerialPort1.begin(9600, SERIAL_8N1, RS485_RX_1, RS485_TX_1);
+
+    Serial.println("RS232 Initialized");
+}
+
+void receiveRS232Data() {
+    while (SerialPort1.available()) {
+        char c = SerialPort1.read();
+
+        if (c == '=') {
+            if (buffer.length() > 0) {
+                Serial.print("Received: ");
+                Serial.println(buffer);
+                buffer = ""; // Reset buffer after printing
+            } else {
+                Serial.println("Received: <empty>");
+            }
+        } else {
+            buffer += c;
+        }
+    }
+}
+
+void loop() {
+    // Receive data
+    receiveRS232Data();
+}

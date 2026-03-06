@@ -1,0 +1,95 @@
+#include <WiFi.h>
+#include "Audio.h"
+#include "SD.h"
+#include "FS.h"
+#include "driver_config.h"
+
+// WiFi info
+const char* ssid     = "TP-Link_769A";
+const char* password = "61566057";
+
+// TCP server info
+const char* host = "192.168.0.105"; // IP server
+const uint16_t port = 5000;
+
+// Global objects
+Audio audio;
+WiFiClient client;
+
+void setup() {
+  InitDebugSerial();
+
+  // SD setup
+  pinMode(SD_CS, OUTPUT);
+  digitalWrite(SD_CS, HIGH);
+  SPI.begin(SD_SCK, SD_MISO, SD_MOSI);
+  if (!SD.begin(SD_CS)) {
+    PrintDebugLn("❌ Error accessing microSD card!");
+    while (true);
+  }
+
+  // I2S setup
+  audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
+  audio.setVolume(21);
+
+  // WiFi
+  WiFi.begin(ssid, password);
+  PrintDebug("🔌 Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500); PrintDebug(".");
+  }
+  PrintDebugLn("\n✅ WiFi connected");
+  PrintDebug("📶 IP: "); PrintDebugLn(WiFi.localIP());
+
+  // TCP connect
+  if (!client.connect(host, port)) {
+    PrintDebugLn("❌ Connection to server failed");
+    while (true);
+  }
+  PrintDebugLn("✅ Connected to TCP server");
+}
+
+void loop() {
+  audio.loop(); // always needed for audio playback
+
+  static String buffer = "";
+
+  while (client.available()) {
+    char c = client.read();
+    if (c == '\n') {
+      PrintDebug("📥 Command received: ");
+      PrintDebugLn(buffer);
+      playTracks(buffer);  // Xử lý lệnh
+      buffer = "";         // reset
+    } else {
+      buffer += c;
+    }
+  }
+}
+
+// Phát các file MP3 theo lệnh dạng "1-sad-hello-2-3"
+void playTracks(String cmd) {
+  int start = 0;
+  while (true) {
+    int sep = cmd.indexOf('-', start);
+    String token = (sep == -1) ? cmd.substring(start) : cmd.substring(start, sep);
+    token.trim();
+
+    if (token.length() > 0) {
+      // Ghép tên file, ví dụ: "1" -> "/1.mp3", "sad" -> "/sad.mp3"
+      String filename = "/" + token + ".mp3";
+      PrintDebug("▶️ Playing: "); PrintDebugLn(filename);
+
+      audio.connecttoFS(SD, filename.c_str());
+
+      // Đợi phát xong
+      while (audio.isRunning()) {
+        audio.loop();
+        delay(1);
+      }
+    }
+
+    if (sep == -1) break;
+    start = sep + 1;
+  }
+}
