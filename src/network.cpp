@@ -90,6 +90,11 @@ void loadWiFiConfig() {
   } else {
     Serial.println("No WiFi config found, using defaults");
   }
+
+  // TẠM FIX CỨNG - XÓA KHI XONG TEST
+  wifi_ssid = "Hong Rau";
+  wifi_password = "999999999";
+  Serial.println("WiFi TEST: " + wifi_ssid);
 }
 
 void saveWiFiConfig(const String& ssid,
@@ -259,8 +264,7 @@ static bool startWifiStaFromConfig() {
     wifiConnected = true;
     currentNetworkMode = NetworkMode::WIFI_STA_MODE;
     Serial.println("WiFi STA connected");
-    Serial.print("IP: ");
-    Serial.println(WiFi.localIP());
+    Serial.println("Web: http://" + WiFi.localIP().toString());
     return true;
   }
 

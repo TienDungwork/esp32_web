@@ -51,6 +51,13 @@ void setup() {
       Serial.println("LittleFS check: index.html found");
     } else {
       Serial.println("LittleFS check: index.html NOT found");
+    }
+    if (LittleFS.exists("/style.css") || LittleFS.exists("style.css")) {
+      Serial.println("LittleFS check: style.css found");
+    } else {
+      Serial.println("LittleFS check: style.css NOT found - chay 'pio run -t uploadfs' de upload file");
+    }
+    if (!LittleFS.exists("/index.html") && !LittleFS.exists("index.html")) {
       Serial.println("Hint: reflash partitions.bin + littlefs.bin with matching partition table.");
     }
   }

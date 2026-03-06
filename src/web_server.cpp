@@ -27,21 +27,17 @@ static bool serveStaticFile(const String& rawPath) {
   if (path.length() == 0 || path == "/") path = "/index.html";
   if (!path.startsWith("/")) path = "/" + path;
 
-  if (!LittleFS.exists(path)) {
-    String alt = path.substring(1);
-    if (!LittleFS.exists(alt)) {
-      return false;
-    }
-    path = alt;
-  }
+  String pathNoSlash = path.substring(1);
+  String usePath = LittleFS.exists(path) ? path : (LittleFS.exists(pathNoSlash) ? pathNoSlash : "");
+  if (usePath.length() == 0) return false;
 
-  File f = LittleFS.open(path, "r");
+  File f = LittleFS.open(usePath, "r");
   if (!f) return false;
 
   server.sendHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
   server.sendHeader("Pragma", "no-cache");
   server.sendHeader("Expires", "0");
-  server.streamFile(f, getContentType(path));
+  server.streamFile(f, getContentType(usePath));
   f.close();
   return true;
 }
@@ -98,7 +94,7 @@ static void handleWifiScan() {
   }
 
   unsigned long scanStart = millis();
-  int n = WiFi.scanNetworks(false, true, false, 200);
+  int n = WiFi.scanNetworks(false, true, false, 100);
   unsigned long scanDuration = millis() - scanStart;
   Serial.println("Scan completed in " + String(scanDuration) + "ms");
 
@@ -330,6 +326,9 @@ static void handleLedConfig() {
 
 void webServerInit() {
   server.on("/", HTTP_GET, handleRoot);
+
+  server.serveStatic("/style.css", LittleFS, "/style.css");
+  server.serveStatic("/index.html", LittleFS, "/index.html");
 
   server.on("/api/network/status", HTTP_GET, handleNetworkStatus);
   server.on("/api/wifi/scan", HTTP_GET, handleWifiScan);
