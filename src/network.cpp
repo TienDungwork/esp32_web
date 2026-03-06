@@ -92,8 +92,8 @@ void loadWiFiConfig() {
   }
 
   // TẠM FIX CỨNG - XÓA KHI XONG TEST
-  wifi_ssid = "Hong Rau";
-  wifi_password = "999999999";
+  wifi_ssid = "Phuc An";
+  wifi_password = "88889999";
   Serial.println("WiFi TEST: " + wifi_ssid);
 }
 

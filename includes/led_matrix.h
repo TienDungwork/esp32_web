@@ -20,7 +20,7 @@
 
 #define PANEL_RES_X 64
 #define PANEL_RES_Y 32
-#define PANEL_CHAIN 2
+#define PANEL_CHAIN 6
 
 // 0: normal, 1: 90 deg, 2: 180 deg, 3: 270 deg
 #define PANEL_ROTATION 2

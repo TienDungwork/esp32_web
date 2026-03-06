@@ -1,6 +1,30 @@
 #include "led_matrix.h"
+#include <Adafruit_GFX.h>
 
 MatrixPanel_I2S_DMA* dma_display = nullptr;
+
+// Wrapper để mirror xen kẽ các bảng lẻ (1,3,5...) khi vẽ chữ
+class MirrorMatrixWrapper : public Adafruit_GFX {
+ public:
+  MirrorMatrixWrapper(int16_t w, int16_t h, MatrixPanel_I2S_DMA* real, int panelW)
+    : Adafruit_GFX(w, h), _real(real), _panelW(panelW) {}
+  void drawPixel(int16_t x, int16_t y, uint16_t color) override {
+    if (!_real || x < 0 || x >= width() || y < 0 || y >= height()) return;
+    int p = x / _panelW;
+    int16_t x2 = (p % 2 == 1)
+      ? (p * _panelW + (_panelW - 1 - (x % _panelW)))
+      : x;
+    _real->drawPixel(x2, y, color);
+  }
+  void fillScreen(uint16_t color) override {
+    if (_real) _real->fillScreen(color);
+  }
+ private:
+  MatrixPanel_I2S_DMA* _real;
+  int _panelW;
+};
+
+static MirrorMatrixWrapper* mirror_display = nullptr;
 
 uint16_t LED_COLOR_BLACK;
 uint16_t LED_COLOR_WHITE;
@@ -47,6 +71,9 @@ void ledMatrixInit() {
 
   dma_display->setBrightness8(180);
   dma_display->clearScreen();
+
+  int totalW = PANEL_RES_X * PANEL_CHAIN;
+  mirror_display = new MirrorMatrixWrapper(totalW, PANEL_RES_Y, dma_display, PANEL_RES_X);
 
   Serial.println("LED Matrix initialized");
 }
@@ -100,6 +127,7 @@ static float clampFloat(float value, float low, float high) {
 
 void ledMatrixShowMultiLine(const String lines[], const float fontSizes[], int lineCount, int boardCount) {
   if (!dma_display || lineCount <= 0) return;
+  Adafruit_GFX* draw = (mirror_display != nullptr) ? (Adafruit_GFX*)mirror_display : (Adafruit_GFX*)dma_display;
 
   const int safeLineCount = clampInt(lineCount, 1, 5);
   const int safeBoardCount = clampInt(boardCount, 1, PANEL_CHAIN);
@@ -126,42 +154,51 @@ void ledMatrixShowMultiLine(const String lines[], const float fontSizes[], int l
 
   for (int i = 0; i < visibleCount; i++) {
     const int idx = lineIndexes[i];
-    dma_display->setTextSize(clampFloat(fontSizes[idx], 0.8f, 8.0f));
+    draw->setTextSize(clampFloat(fontSizes[idx], 0.8f, 8.0f));
 
     int16_t x1, y1;
     uint16_t w, h;
-    dma_display->getTextBounds(lines[idx], 0, 0, &x1, &y1, &w, &h);
+    draw->getTextBounds(lines[idx], 0, 0, &x1, &y1, &w, &h);
     heights[i] = static_cast<int>(h);
     yOffsets[i] = static_cast<int>(y1);
     totalTextHeight += heights[i];
   }
 
   totalTextHeight += (visibleCount - 1) * lineSpacing;
-  int top = (PANEL_RES_Y - totalTextHeight) / 2;
+
+  float scale = 1.0f;
+  if (totalTextHeight > PANEL_RES_Y && totalTextHeight > 0) {
+    scale = (float)PANEL_RES_Y / (float)totalTextHeight;
+    if (scale < 0.5f) scale = 0.5f;
+  }
+
+  int scaledTotalHeight = (int)((float)totalTextHeight * scale);
+  int top = (PANEL_RES_Y - scaledTotalHeight) / 2;
   if (top < 0) top = 0;
 
   dma_display->clearScreen();
-  dma_display->setTextColor(LED_COLOR_GREEN);
+  draw->setTextColor(LED_COLOR_GREEN);
 
   int cursorTop = top;
   for (int i = 0; i < visibleCount; i++) {
     const int idx = lineIndexes[i];
-
-    dma_display->setTextSize(clampFloat(fontSizes[idx], 0.8f, 8.0f));
+    float sz = clampFloat(fontSizes[idx], 0.8f, 8.0f) * scale;
+    if (sz < 0.8f) sz = 0.8f;
+    draw->setTextSize(sz);
 
     int16_t x1, y1;
     uint16_t w, h;
-    dma_display->getTextBounds(lines[idx], 0, 0, &x1, &y1, &w, &h);
+    draw->getTextBounds(lines[idx], 0, 0, &x1, &y1, &w, &h);
 
     int x = (totalWidth - static_cast<int>(w)) / 2;
     if (x < 0) x = 0;
 
-    int baselineY = cursorTop - yOffsets[i];
+    int baselineY = cursorTop - y1;
     if (baselineY < 0) baselineY = 0;
 
-    dma_display->setCursor(x, baselineY);
-    dma_display->print(lines[idx]);
+    draw->setCursor(x, baselineY);
+    draw->print(lines[idx]);
 
-    cursorTop += heights[i] + lineSpacing;
+    cursorTop += (int)h + lineSpacing;
   }
 }
