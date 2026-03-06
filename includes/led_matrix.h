@@ -22,6 +22,13 @@
 #define PANEL_RES_Y 32
 #define PANEL_CHAIN 6
 
+// Layout panel vật lý:
+// Hàng 1: 1 -> 2
+// Hàng 2: 3 -> 4
+// Hàng 3: 5 -> 6
+#define VDISP_NUM_ROWS 3
+#define VDISP_NUM_COLS 2
+
 // 0: normal, 1: 90 deg, 2: 180 deg, 3: 270 deg
 #define PANEL_ROTATION 2
 

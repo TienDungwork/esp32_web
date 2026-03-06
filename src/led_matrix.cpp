@@ -1,30 +1,11 @@
 #include "led_matrix.h"
-#include <Adafruit_GFX.h>
+#include <ESP32-HUB75-VirtualMatrixPanel_T.hpp>
 
 MatrixPanel_I2S_DMA* dma_display = nullptr;
 
-// Wrapper để mirror xen kẽ các bảng lẻ (1,3,5...) khi vẽ chữ
-class MirrorMatrixWrapper : public Adafruit_GFX {
- public:
-  MirrorMatrixWrapper(int16_t w, int16_t h, MatrixPanel_I2S_DMA* real, int panelW)
-    : Adafruit_GFX(w, h), _real(real), _panelW(panelW) {}
-  void drawPixel(int16_t x, int16_t y, uint16_t color) override {
-    if (!_real || x < 0 || x >= width() || y < 0 || y >= height()) return;
-    int p = x / _panelW;
-    int16_t x2 = (p % 2 == 1)
-      ? (p * _panelW + (_panelW - 1 - (x % _panelW)))
-      : x;
-    _real->drawPixel(x2, y, color);
-  }
-  void fillScreen(uint16_t color) override {
-    if (_real) _real->fillScreen(color);
-  }
- private:
-  MatrixPanel_I2S_DMA* _real;
-  int _panelW;
-};
-
-static MirrorMatrixWrapper* mirror_display = nullptr;
+// Dùng VirtualMatrixPanel_T để map đúng layout 3 hàng x 2 cột.
+// Với mô tả của bạn (mỗi hàng đi trái->phải), thường wiring sẽ hợp với *_ZZ.
+static VirtualMatrixPanel_T<CHAIN_TOP_LEFT_DOWN_ZZ>* virtual_display = nullptr;
 
 uint16_t LED_COLOR_BLACK;
 uint16_t LED_COLOR_WHITE;
@@ -72,27 +53,33 @@ void ledMatrixInit() {
   dma_display->setBrightness8(180);
   dma_display->clearScreen();
 
-  int totalW = PANEL_RES_X * PANEL_CHAIN;
-  mirror_display = new MirrorMatrixWrapper(totalW, PANEL_RES_Y, dma_display, PANEL_RES_X);
+  if (!virtual_display) {
+    virtual_display = new VirtualMatrixPanel_T<CHAIN_TOP_LEFT_DOWN_ZZ>(
+      VDISP_NUM_ROWS, VDISP_NUM_COLS, PANEL_RES_X, PANEL_RES_Y
+    );
+    virtual_display->setDisplay(*dma_display);
+    virtual_display->setRotation(PANEL_ROTATION);
+  }
 
   Serial.println("LED Matrix initialized");
 }
 
 void ledMatrixShowCenterText(const String& text, uint16_t color, int y) {
   if (!dma_display) return;
+  auto* draw = (virtual_display != nullptr) ? (Adafruit_GFX*)virtual_display : (Adafruit_GFX*)dma_display;
 
   dma_display->clearScreen();
-  dma_display->setTextSize(1.6);
-  dma_display->setTextColor(color);
+  draw->setTextSize(1.6);
+  draw->setTextColor(color);
 
   int16_t x1, y1;
   uint16_t w, h;
-  dma_display->getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
-  int totalWidth = PANEL_RES_X * PANEL_CHAIN;
-  int x = (totalWidth - w) / 2;
+  draw->getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
+  int totalWidth = draw->width();
+  int x = (totalWidth - (int)w) / 2;
 
-  dma_display->setCursor(x, y);
-  dma_display->print(text);
+  draw->setCursor(x, y);
+  draw->print(text);
 }
 
 void ledMatrixTestBasic() {
@@ -110,7 +97,7 @@ void ledMatrixTestBasic() {
 }
 
 int ledMatrixGetMaxBoardCount() {
-  return PANEL_CHAIN;
+  return VDISP_NUM_ROWS * VDISP_NUM_COLS;
 }
 
 static int clampInt(int value, int low, int high) {
@@ -127,11 +114,11 @@ static float clampFloat(float value, float low, float high) {
 
 void ledMatrixShowMultiLine(const String lines[], const float fontSizes[], int lineCount, int boardCount) {
   if (!dma_display || lineCount <= 0) return;
-  Adafruit_GFX* draw = (mirror_display != nullptr) ? (Adafruit_GFX*)mirror_display : (Adafruit_GFX*)dma_display;
+  Adafruit_GFX* draw = (virtual_display != nullptr) ? (Adafruit_GFX*)virtual_display : (Adafruit_GFX*)dma_display;
 
   const int safeLineCount = clampInt(lineCount, 1, 5);
-  const int safeBoardCount = clampInt(boardCount, 1, PANEL_CHAIN);
-  const int totalWidth = PANEL_RES_X * safeBoardCount;
+  (void)boardCount; // dùng toàn bộ layout 6 bảng (2 cột x 3 hàng)
+  const int totalWidth = draw->width();
   const int maxVisibleLines = 5;
 
   int lineIndexes[maxVisibleLines] = {0, 0, 0, 0, 0};
@@ -148,7 +135,6 @@ void ledMatrixShowMultiLine(const String lines[], const float fontSizes[], int l
   }
 
   int heights[maxVisibleLines] = {0, 0, 0, 0, 0};
-  int yOffsets[maxVisibleLines] = {0, 0, 0, 0, 0};
   int totalTextHeight = 0;
   const int lineSpacing = 1;
 
@@ -160,20 +146,20 @@ void ledMatrixShowMultiLine(const String lines[], const float fontSizes[], int l
     uint16_t w, h;
     draw->getTextBounds(lines[idx], 0, 0, &x1, &y1, &w, &h);
     heights[i] = static_cast<int>(h);
-    yOffsets[i] = static_cast<int>(y1);
     totalTextHeight += heights[i];
   }
 
   totalTextHeight += (visibleCount - 1) * lineSpacing;
 
   float scale = 1.0f;
-  if (totalTextHeight > PANEL_RES_Y && totalTextHeight > 0) {
-    scale = (float)PANEL_RES_Y / (float)totalTextHeight;
+  const int availableH = draw->height();
+  if (totalTextHeight > availableH && totalTextHeight > 0) {
+    scale = (float)availableH / (float)totalTextHeight;
     if (scale < 0.5f) scale = 0.5f;
   }
 
   int scaledTotalHeight = (int)((float)totalTextHeight * scale);
-  int top = (PANEL_RES_Y - scaledTotalHeight) / 2;
+  int top = (availableH - scaledTotalHeight) / 2;
   if (top < 0) top = 0;
 
   dma_display->clearScreen();
