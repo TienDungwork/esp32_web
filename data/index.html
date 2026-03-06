@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hệ thống đếm bao – Cấu hình</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+
+<body>
+  <header class="app-header">
+    <h1><i class="fas fa-microchip"></i> HỆ THỐNG </h1>
+    <p class="sub-title">ESP32 – Cấu hình & Điều khiển</p>
+  </header>
+
+  <main class="main-container">
+    <div class="device-status-indicator" id="deviceStatus">
+      <span class="status-dot"></span>
+      <span class="status-text" id="deviceStatusText">Đang kiểm tra trạng thái...</span>
+    </div>
+
+    <nav class="tab-navigation">
+      <button class="tab-btn active" data-tab="config" onclick="showTab('config')">
+        <i class="fas fa-cog"></i>
+        <span>Cấu hình</span>
+      </button>
+      <button class="tab-btn" data-tab="features" onclick="showTab('features')">
+        <i class="fas fa-th-large"></i>
+        <span>Chức năng</span>
+      </button>
+    </nav>
+
+    <section class="tab-content">
+      <!-- ═══════════ TAB CẤU HÌNH ═══════════ -->
+      <div class="tab-pane active" id="config">
+
+        <!-- Trạng thái kết nối -->
+        <div class="collapsible-header open" onclick="toggleCollapse(this)">
+          <h2><i class="fas fa-signal"></i> Trạng thái kết nối</h2>
+          <i class="fas fa-chevron-down chevron"></i>
+        </div>
+        <div class="collapsible-body open">
+          <div class="collapsible-body-inner">
+            <div class="status-grid">
+              <div class="status-item">
+                <label>Chế độ hiện tại:</label>
+                <span id="currentMode">Đang kiểm tra...</span>
+              </div>
+              <div class="status-item">
+                <label>Địa chỉ IP:</label>
+                <span id="currentIP">Đang kiểm tra...</span>
+              </div>
+              <div class="status-item">
+                <label>WiFi STA:</label>
+                <span id="wifiStatus">Đang kiểm tra...</span>
+              </div>
+              <div class="status-item">
+                <label>Ethernet:</label>
+                <span id="ethStatus">Đang kiểm tra...</span>
+              </div>
+              <div class="status-item">
+                <label>AP SSID:</label>
+                <span id="apSSID">Đang kiểm tra...</span>
+              </div>
+            </div>
+            <button class="btn btn-secondary" onclick="refreshNetworkStatus()">
+              <i class="fas fa-sync-alt"></i> Làm mới
+            </button>
+          </div>
+        </div>
+
+        <!-- Cấu hình WiFi -->
+        <div class="collapsible-header" onclick="toggleCollapse(this)">
+          <h2><i class="fas fa-wifi"></i> Cấu hình WiFi</h2>
+          <i class="fas fa-chevron-down chevron"></i>
+        </div>
+        <div class="collapsible-body">
+          <div class="collapsible-body-inner">
+            <button class="btn btn-primary" id="scanBtn" onclick="scanWiFi()" style="margin-bottom:10px">
+              <i class="fas fa-search"></i> Quét mạng WiFi
+            </button>
+            <div id="wifiList" class="wifi-list"></div>
+
+            <div class="form-group" style="margin-top:10px">
+              <label>SSID:</label>
+              <input type="text" id="wifiSSID" placeholder="Tên WiFi">
+            </div>
+            <div class="form-group">
+              <label>Mật khẩu:</label>
+              <input type="password" id="wifiPassword" placeholder="Mật khẩu WiFi">
+            </div>
+
+            <div class="form-group checkbox-group">
+              <label>
+                <input type="checkbox" id="useStaticIP" onchange="toggleStaticIPFields()">
+                Sử dụng IP tĩnh
+              </label>
+            </div>
+
+            <div id="staticIPBlock" style="display:none;">
+              <div class="form-row">
+                <div class="form-group">
+                  <label>IP Address:</label>
+                  <input type="text" id="staticIP" placeholder="192.168.1.201">
+                </div>
+                <div class="form-group">
+                  <label>Gateway:</label>
+                  <input type="text" id="staticGateway" placeholder="192.168.1.1">
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label>Subnet:</label>
+                  <input type="text" id="staticSubnet" placeholder="255.255.255.0">
+                </div>
+                <div class="form-group">
+                  <label>DNS 1:</label>
+                  <input type="text" id="staticDNS1" placeholder="8.8.8.8">
+                </div>
+                <div class="form-group">
+                  <label>DNS 2:</label>
+                  <input type="text" id="staticDNS2" placeholder="8.8.4.4">
+                </div>
+              </div>
+            </div>
+
+            <div class="form-actions">
+              <button class="btn btn-success" onclick="connectWifi()">
+                <i class="fas fa-link"></i> Lưu & kết nối
+              </button>
+            </div>
+            <p class="hint" id="wifiMessage"></p>
+          </div>
+        </div>
+
+        <!-- Cấu hình LAN -->
+        <div class="collapsible-header" onclick="toggleCollapse(this)">
+          <h2><i class="fas fa-network-wired"></i> Cấu hình LAN (Ethernet)</h2>
+          <i class="fas fa-chevron-down chevron"></i>
+        </div>
+        <div class="collapsible-body">
+          <div class="collapsible-body-inner">
+            <div class="form-row">
+              <div class="form-group">
+                <label>Địa chỉ IP:</label>
+                <input type="text" id="lanIP" placeholder="192.168.41.200">
+              </div>
+              <div class="form-group">
+                <label>Gateway:</label>
+                <input type="text" id="lanGW" placeholder="192.168.41.1">
+              </div>
+              <div class="form-group">
+                <label>Subnet:</label>
+                <input type="text" id="lanSubnet" placeholder="255.255.255.0">
+              </div>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" onclick="loadLanConfig()">
+                <i class="fas fa-download"></i> Tải cấu hình
+              </button>
+              <button class="btn btn-success" onclick="saveLanConfig()">
+                <i class="fas fa-save"></i> Lưu & restart
+              </button>
+            </div>
+            <p class="hint" id="lanMessage"></p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ═══════════ TAB CHỨC NĂNG ═══════════ -->
+      <div class="tab-pane" id="features">
+
+        <div class="led-config">
+          <h2><i class="fas fa-tv"></i> Điều khiển bảng LED</h2>
+
+          <div class="led-board-count">
+            <label>Số lượng bảng LED:</label>
+            <input type="number" id="ledBoardCount" value="1" min="1" max="99">
+          </div>
+
+          <div class="led-rows-container">
+            <div class="led-row-header">
+              <span>Dòng</span>
+              <span>Nội dung hiển thị</span>
+              <span>Cỡ chữ</span>
+            </div>
+            <div class="led-row">
+              <span class="led-row-label">1</span>
+              <input type="text" id="ledText1" placeholder="Nhập nội dung dòng 1">
+              <input type="number" id="ledSize1" value="1.6" min="0.8" max="8" step="0.1" placeholder="scale">
+            </div>
+            <div class="led-row">
+              <span class="led-row-label">2</span>
+              <input type="text" id="ledText2" placeholder="Nhập nội dung dòng 2">
+              <input type="number" id="ledSize2" value="1.6" min="0.8" max="8" step="0.1" placeholder="scale">
+            </div>
+            <div class="led-row">
+              <span class="led-row-label">3</span>
+              <input type="text" id="ledText3" placeholder="Nhập nội dung dòng 3">
+              <input type="number" id="ledSize3" value="1.6" min="0.8" max="8" step="0.1" placeholder="scale">
+            </div>
+            <div class="led-row">
+              <span class="led-row-label">4</span>
+              <input type="text" id="ledText4" placeholder="Nhập nội dung dòng 4">
+              <input type="number" id="ledSize4" value="1.6" min="0.8" max="8" step="0.1" placeholder="scale">
+            </div>
+            <div class="led-row">
+              <span class="led-row-label">5</span>
+              <input type="text" id="ledText5" placeholder="Nhập nội dung dòng 5">
+              <input type="number" id="ledSize5" value="1.6" min="0.8" max="8" step="0.1" placeholder="scale">
+            </div>
+          </div>
+
+          <div class="led-actions">
+            <button class="btn btn-success" onclick="sendLedConfig()">
+              <i class="fas fa-paper-plane"></i> Gửi cấu hình LED
+            </button>
+            <span class="led-message" id="ledMessage"></span>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <script>
+    /* ── Tab switching ── */
+    function showTab(id) {
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === id);
+      });
+      document.querySelectorAll('.tab-pane').forEach(pane => {
+        pane.classList.toggle('active', pane.id === id);
+      });
+    }
+
+    /* ── Collapsible toggle ── */
+    function toggleCollapse(header) {
+      const body = header.nextElementSibling;
+      const isOpen = header.classList.contains('open');
+      if (isOpen) {
+        header.classList.remove('open');
+        body.classList.remove('open');
+      } else {
+        header.classList.add('open');
+        body.classList.add('open');
+      }
+    }
+
+    /* ── Device status ── */
+    function setStatusOnline(online) {
+      const el = document.getElementById('deviceStatus');
+      el.classList.toggle('online', online);
+      el.classList.toggle('offline', !online);
+    }
+
+    async function refreshNetworkStatus() {
+      try {
+        const res = await fetch('/api/network/status');
+        if (!res.ok) throw new Error('network status error');
+        const data = await res.json();
+
+        document.getElementById('currentMode').textContent = data.current_mode || '-';
+        document.getElementById('currentIP').textContent = data.ip || '-';
+        document.getElementById('wifiStatus').textContent =
+          data.wifi_connected ? 'Kết nối' : 'Chưa kết nối';
+        document.getElementById('ethStatus').textContent =
+          data.ethernet_connected ? 'Kết nối' : 'Chưa kết nối';
+        document.getElementById('apSSID').textContent = data.ap_ssid || '-';
+
+        const online = data.wifi_connected || data.ethernet_connected;
+        setStatusOnline(online);
+        document.getElementById('deviceStatusText').textContent =
+          online ? 'Thiết bị đã kết nối mạng' : 'Thiết bị chưa kết nối mạng';
+      } catch (e) {
+        setStatusOnline(false);
+        document.getElementById('deviceStatusText').textContent =
+          'Không đọc được trạng thái mạng';
+      }
+    }
+
+    /* ── WiFi scan ── */
+    async function scanWiFi() {
+      const btn = document.getElementById('scanBtn');
+      const list = document.getElementById('wifiList');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Đang quét...';
+      list.innerHTML = '<p style="font-size:13px;color:#6c757d">Đang quét mạng WiFi...</p>';
+      try {
+        const res = await fetch('/api/wifi/scan');
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'scan error');
+        }
+        const networks = data.networks || [];
+        if (!networks.length) {
+          list.innerHTML = '<p style="font-size:13px;color:#6c757d">Không tìm thấy mạng nào.</p>';
+          return;
+        }
+        list.innerHTML = '';
+        networks.forEach(n => {
+          const item = document.createElement('div');
+          item.className = 'wifi-item';
+          item.innerHTML = `
+            <div class="wifi-main">
+              <span class="wifi-ssid">${n.ssid}</span>
+              <span class="wifi-rssi">${n.rssi} dBm</span>
+            </div>
+            <button class="btn btn-small btn-primary" type="button"
+              onclick="selectWifi('${n.ssid.replace(/'/g, "\\'")}')">
+              Chọn
+            </button>`;
+          list.appendChild(item);
+        });
+      } catch (e) {
+        const msg = e?.message ? `Lỗi khi quét WiFi: ${e.message}` : 'Lỗi khi quét WiFi.';
+        list.innerHTML = `<p style="font-size:13px;color:#dc3545">${msg}</p>`;
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-search"></i> Quét mạng WiFi';
+      }
+    }
+
+    function selectWifi(ssid) {
+      document.getElementById('wifiSSID').value = ssid;
+    }
+
+    function toggleStaticIPFields() {
+      const block = document.getElementById('staticIPBlock');
+      block.style.display = document.getElementById('useStaticIP').checked ? 'block' : 'none';
+    }
+
+    async function connectWifi() {
+      const ssid = document.getElementById('wifiSSID').value.trim();
+      const password = document.getElementById('wifiPassword').value;
+      const useStatic = document.getElementById('useStaticIP').checked;
+      const msgEl = document.getElementById('wifiMessage');
+
+      if (!ssid) {
+        msgEl.textContent = 'Vui lòng nhập SSID.';
+        return;
+      }
+
+      const body = {
+        ssid,
+        password,
+        use_static_ip: useStatic,
+        static_ip: document.getElementById('staticIP').value.trim(),
+        gateway: document.getElementById('staticGateway').value.trim(),
+        subnet: document.getElementById('staticSubnet').value.trim(),
+        dns1: document.getElementById('staticDNS1').value.trim(),
+        dns2: document.getElementById('staticDNS2').value.trim()
+      };
+
+      msgEl.textContent = 'Đang gửi cấu hình WiFi...';
+      try {
+        const res = await fetch('/api/wifi/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        msgEl.textContent = data.message || 'Đã gửi cấu hình, đang thử kết nối...';
+      } catch (e) {
+        msgEl.textContent = 'Lỗi khi gửi cấu hình WiFi.';
+      }
+    }
+
+    /* ── LAN config ── */
+    async function loadLanConfig() {
+      const msgEl = document.getElementById('lanMessage');
+      msgEl.textContent = 'Đang tải cấu hình LAN...';
+      try {
+        const res = await fetch('/api/lan');
+        if (!res.ok) throw new Error('lan error');
+        const data = await res.json();
+        document.getElementById('lanIP').value = data.ipAddress || '';
+        document.getElementById('lanGW').value = data.gateway || '';
+        document.getElementById('lanSubnet').value = data.subnet || '';
+        msgEl.textContent = 'Đã tải cấu hình LAN hiện tại.';
+      } catch (e) {
+        msgEl.textContent = 'Không đọc được cấu hình LAN.';
+      }
+    }
+
+    async function saveLanConfig() {
+      const ip = document.getElementById('lanIP').value.trim();
+      const gw = document.getElementById('lanGW').value.trim();
+      const sn = document.getElementById('lanSubnet').value.trim();
+      const msgEl = document.getElementById('lanMessage');
+
+      if (!ip || !gw || !sn) {
+        msgEl.textContent = 'Vui lòng nhập đầy đủ IP / Gateway / Subnet.';
+        return;
+      }
+
+      msgEl.textContent = 'Đang lưu cấu hình LAN...';
+      try {
+        const res = await fetch('/api/lan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ipAddress: ip, gateway: gw, subnet: sn })
+        });
+        const data = await res.json();
+        msgEl.textContent = data.message || 'Đã lưu, thiết bị có thể restart.';
+      } catch (e) {
+        msgEl.textContent = 'Lỗi khi lưu cấu hình LAN.';
+      }
+    }
+
+    /* ── LED config ── */
+    async function sendLedConfig() {
+      const boardCount = document.getElementById('ledBoardCount').value;
+      const lines = [];
+      for (let i = 1; i <= 5; i++) {
+        lines.push({
+          line: i,
+          text: document.getElementById('ledText' + i).value,
+          fontSize: parseFloat(document.getElementById('ledSize' + i).value) || 1.6
+        });
+      }
+
+      const payload = {
+        boardCount: parseInt(boardCount) || 1,
+        lines: lines
+      };
+
+      const msgEl = document.getElementById('ledMessage');
+      msgEl.textContent = 'Đang gửi cấu hình LED...';
+
+      try {
+        const res = await fetch('/api/led/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        const raw = await res.text();
+
+        let data = {};
+        try {
+          data = raw ? JSON.parse(raw) : {};
+        } catch (_) {
+          data = { error: raw || 'Invalid response' };
+        }
+
+        if (!res.ok) {
+          msgEl.textContent = `Lỗi ${res.status}: ${data.error || 'Gửi cấu hình LED thất bại.'}`;
+          return;
+        }
+
+        msgEl.textContent = data.message || 'Đã gửi cấu hình LED.';
+      } catch (e) {
+        msgEl.textContent = e?.message ? `Lỗi khi gửi cấu hình LED: ${e.message}` : 'Lỗi khi gửi cấu hình LED.';
+      }
+    }
+
+    /* ── Init ── */
+    window.addEventListener('load', () => {
+      refreshNetworkStatus();
+    });
+  </script>
+</body>
+
+</html>

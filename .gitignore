@@ -1,0 +1,14 @@
+# PlatformIO build/cache output
+.pio/
+
+# C/C++ IntelliSense and local VS Code cache
+.vscode/.browse.c_cpp.db*
+.vscode/ipch/
+
+# Local/editor-specific VS Code settings
+.vscode/c_cpp_properties.json
+.vscode/launch.json
+
+# OS generated files
+.DS_Store
+Thumbs.db
