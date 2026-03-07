@@ -297,7 +297,7 @@
     /*          FEATURE: TRAFFIC LIGHT                   */
     /* ══════════════════════════════════════════════════ */
     async function controlTrafficLight() {
-      const state = document.querySelector('input[name="trafficState"]:checked')?.value || 'off';
+      const state = document.querySelector('input[name="trafficState"]:checked')?.value || 'red';
       const msgEl = document.getElementById('trafficMessage');
       msgEl.textContent = 'Đang gửi lệnh...';
       try {
