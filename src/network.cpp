@@ -91,6 +91,13 @@ void loadWiFiConfig() {
     Serial.println("No WiFi config found, using defaults");
   }
 
+  // Fallback test WiFi only when nothing is configured in storage.
+  if (wifi_ssid.length() == 0) {
+    wifi_ssid = "Phuc An";
+    wifi_password = "88889999";
+    Serial.println("WiFi fallback TEST: " + wifi_ssid);
+  }
+
   Serial.println("WiFi runtime config: SSID=" + wifi_ssid +
                  " staticIP=" + String(wifi_use_static_ip ? "true" : "false"));
 }
