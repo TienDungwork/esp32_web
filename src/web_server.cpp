@@ -16,6 +16,14 @@
 WebServer server(80);
 static const char* LED_CONFIG_FILE = "/led_config.json";
 
+#ifndef APP_FIRMWARE_VERSION
+  #define APP_FIRMWARE_VERSION "dev"
+#endif
+
+static String getFirmwareBuildStamp() {
+  return String(__DATE__) + " " + String(__TIME__);
+}
+
 static void sendDefaultLedConfig() {
   DynamicJsonDocument doc(1024);
   doc["boardCount"] = 1;
@@ -112,18 +120,20 @@ static void handleNetworkStatus() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.sendHeader("Cache-Control", "no-cache");
 
-  String mode = networkGetModeString();
-  IPAddress ip = networkGetCurrentIp();
+  DynamicJsonDocument doc(512);
+  doc["current_mode"] = networkGetModeString();
+  doc["ip"] = networkGetCurrentIp().toString();
+  doc["ethernet_connected"] = ethernetConnected;
+  doc["wifi_connected"] = wifiConnected;
+  doc["ap_ssid"] = networkGetApSsid();
 
-  String resp = "{";
-  resp += "\"current_mode\":\"" + mode + "\",";
-  resp += "\"ip\":\"" + ip.toString() + "\",";
-  resp += "\"ethernet_connected\":" + String(ethernetConnected ? "true" : "false") + ",";
-  resp += "\"wifi_connected\":" + String(wifiConnected ? "true" : "false") + ",";
-  resp += "\"ap_ssid\":\"" + networkGetApSsid() + "\"";
-  resp += "}";
+  // Firmware metadata for showing current version before OTA.
+  doc["firmware_version"] = APP_FIRMWARE_VERSION;
+  doc["firmware_build"] = getFirmwareBuildStamp();
 
-  server.send(200, "application/json", resp);
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
 }
 
 static void handleWifiScan() {

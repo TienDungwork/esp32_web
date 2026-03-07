@@ -11,6 +11,69 @@ body {
   color: #333;
 }
 
+/* ── Local icon set (no CDN) ── */
+.fas {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.05em;
+  min-width: 1.05em;
+  line-height: 1;
+  font-style: normal;
+  font-weight: 700;
+  vertical-align: -0.08em;
+}
+
+.fas::before {
+  content: "•";
+  font-family: "Segoe UI Symbol", "Noto Sans Symbols2", "DejaVu Sans", sans-serif;
+  font-size: 0.95em;
+}
+
+.fa-microchip::before { content: "▦"; }
+.fa-cog::before { content: "⚙"; }
+.fa-th-large::before { content: "▥"; }
+.fa-signal::before { content: "▤"; }
+.fa-chevron-down::before { content: "▾"; }
+.fa-sync-alt::before { content: "↻"; }
+.fa-wifi::before { content: "⌁"; }
+.fa-search::before { content: "⌕"; }
+.fa-link::before { content: "⛓"; }
+.fa-network-wired::before { content: "≋"; }
+.fa-download::before { content: "⇩"; }
+.fa-save::before { content: "⎘"; }
+.fa-tv::before { content: "▭"; }
+.fa-road-barrier::before { content: "⊟"; }
+.fa-traffic-light::before { content: "◎"; }
+.fa-volume-up::before { content: "))"; font-size: 0.72em; letter-spacing: -0.08em; }
+.fa-print::before { content: "⎙"; }
+.fa-weight-hanging::before { content: "⌖"; }
+.fa-broadcast-tower::before { content: "◍"; }
+.fa-cloud-upload-alt::before { content: "☁"; }
+.fa-paper-plane::before { content: "➤"; }
+.fa-door-open::before { content: "↗"; }
+.fa-door-closed::before { content: "□"; }
+.fa-stop-circle::before { content: "◼"; }
+.fa-pause-circle::before { content: "⏸"; }
+.fa-check::before { content: "✓"; }
+.fa-eraser::before { content: "⌫"; }
+.fa-play::before { content: "▶"; }
+.fa-satellite-dish::before { content: "◎"; }
+.fa-wave-square::before { content: "∿"; }
+.fa-hand-pointer::before { content: "☞"; }
+.fa-exclamation-triangle::before { content: "⚠"; }
+.fa-upload::before { content: "⇧"; }
+.fa-spinner::before { content: "◌"; }
+
+.fa-spin {
+  animation: iconSpin 1s linear infinite;
+}
+
+@keyframes iconSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* ── Header ── */
 .app-header {
   background: #1a1a2e;
@@ -212,7 +275,10 @@ body {
 }
 
 .collapsible-body.open {
-  max-height: 600px;
+  max-height: min(72vh, 680px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 .collapsible-body-inner {
@@ -381,12 +447,21 @@ body {
 /* ── WiFi list ── */
 .wifi-list {
   margin-top: 10px;
+  max-height: 220px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  padding: 6px;
+  background: #fff;
+  -webkit-overflow-scrolling: touch;
 }
 
 .wifi-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 8px;
   border-radius: 6px;
   padding: 6px 10px;
   border: 1px solid #e9ecef;
@@ -394,14 +469,22 @@ body {
   background: #fafbfc;
 }
 
+.wifi-item:last-child {
+  margin-bottom: 0;
+}
+
 .wifi-main {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .wifi-ssid {
   font-weight: 600;
   font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .wifi-rssi {
@@ -888,10 +971,22 @@ body {
 /* ══════════════════════════════════════════════════ */
 /*         SENSOR / BEAM CARDS                      */
 /* ══════════════════════════════════════════════════ */
-.sensor-grid {
+.sensor-grid,
+.sensor-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
   gap: 10px;
+}
+
+.sensor-grid {
+  margin-bottom: 10px;
+}
+
+.sensor-row-beam {
+  margin-bottom: 10px;
+}
+
+.sensor-row-button {
   margin-bottom: 10px;
 }
 
@@ -1001,6 +1096,10 @@ body {
     padding: 10px 16px;
     font-size: 13px;
   }
+
+  .sensor-row {
+    grid-template-columns: repeat(2, minmax(130px, 1fr));
+  }
 }
 
 @media (max-width: 600px) {
@@ -1031,5 +1130,17 @@ body {
 
   .tab-btn i {
     font-size: 14px;
+  }
+
+  .collapsible-body.open {
+    max-height: 68vh;
+  }
+
+  .wifi-list {
+    max-height: 38vh;
+  }
+
+  .sensor-row {
+    grid-template-columns: 1fr;
   }
 }
