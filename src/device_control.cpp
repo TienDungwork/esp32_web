@@ -14,8 +14,15 @@ void deviceControlInit() {
   // Barrier pins
   pinMode(BARRIER_OPEN_PIN,  OUTPUT);
   pinMode(BARRIER_CLOSE_PIN, OUTPUT);
+  pinMode(RELAY_STOP_PIN,    OUTPUT);
   digitalWrite(BARRIER_OPEN_PIN,  LOW);
   digitalWrite(BARRIER_CLOSE_PIN, LOW);
+  digitalWrite(RELAY_STOP_PIN,    LOW);
+
+  // Physical buttons (momentary buttons with pull-up)
+  pinMode(BTN_OPEN_PIN,  INPUT_PULLUP);
+  pinMode(BTN_CLOSE_PIN, INPUT_PULLUP);
+  pinMode(BTN_STOP_PIN,  INPUT_PULLUP);
 
   // Traffic light pins
   pinMode(TRAFFIC_RED_PIN,    OUTPUT);
@@ -25,13 +32,20 @@ void deviceControlInit() {
   digitalWrite(TRAFFIC_YELLOW_PIN, LOW);
   digitalWrite(TRAFFIC_GREEN_PIN,  LOW);
 
-  // IR beam (input pull-up)
-  pinMode(BEAM_PIN, INPUT_PULLUP);
+  // Beam sensor pins
+  pinMode(BEAM_PWM1_IN_PIN,  INPUT_PULLUP);
+  pinMode(BEAM_PWM2_OUT_PIN, OUTPUT);
+  pinMode(BEAM_A0_PIN,       INPUT);
+  digitalWrite(BEAM_PWM2_OUT_PIN, HIGH);
 
   Serial.println("[DevCtrl] GPIO initialized");
-  Serial.printf("  Barrier: OPEN=%d CLOSE=%d\n", BARRIER_OPEN_PIN, BARRIER_CLOSE_PIN);
+  Serial.printf("  Barrier relays: OPEN=%d CLOSE=%d STOP=%d\n",
+                BARRIER_OPEN_PIN, BARRIER_CLOSE_PIN, RELAY_STOP_PIN);
+  Serial.printf("  Buttons: OPEN=%d CLOSE=%d STOP=%d\n",
+                BTN_OPEN_PIN, BTN_CLOSE_PIN, BTN_STOP_PIN);
   Serial.printf("  Traffic: R=%d Y=%d G=%d\n", TRAFFIC_RED_PIN, TRAFFIC_YELLOW_PIN, TRAFFIC_GREEN_PIN);
-  Serial.printf("  Beam: %d\n", BEAM_PIN);
+  Serial.printf("  Beam: PWM1_IN=%d PWM2_OUT=%d A0=%d\n",
+                BEAM_PWM1_IN_PIN, BEAM_PWM2_OUT_PIN, BEAM_A0_PIN);
 }
 
 // ══════════════════════════════════════════════════

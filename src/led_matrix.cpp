@@ -136,7 +136,12 @@ uint16_t ledMatrixParseColor(const String& hex, uint16_t fallback) {
   return c;
 }
 
-void ledMatrixShowMultiLine(const String lines[], const float fontSizes[], const uint16_t colors[], int lineCount, int boardCount) {
+void ledMatrixShowMultiLine(const String lines[],
+                            const float fontSizes[],
+                            const uint16_t colors[],
+                            int lineCount,
+                            int boardCount,
+                            int customLineSpacing) {
   if (!dma_display || lineCount <= 0) return;
   Adafruit_GFX* draw = (virtual_display != nullptr) ? (Adafruit_GFX*)virtual_display : (Adafruit_GFX*)dma_display;
 
@@ -174,7 +179,10 @@ void ledMatrixShowMultiLine(const String lines[], const float fontSizes[], const
 
   // Tự tính khoảng cách dòng theo chiều cao chữ để nhìn rõ hơn
   const int avgH = (visibleCount > 0) ? max(1, textHeightSum / visibleCount) : 1;
-  const int lineSpacing = clampInt(avgH / 4, 2, 12); // ~25% chiều cao chữ, min 2px
+  int lineSpacing = clampInt(avgH / 4, 2, 12); // ~25% chiều cao chữ, min 2px
+  if (customLineSpacing >= 0) {
+    lineSpacing = clampInt(customLineSpacing, 0, 40);
+  }
   int totalTextHeight = textHeightSum + (visibleCount - 1) * lineSpacing;
 
   float scale = 1.0f;

@@ -6,7 +6,7 @@
 //  và thêm lib "schreibfaul1/ESP32-audioI2S" vào lib_deps
 // ══════════════════════════════════════════════════
 
-#ifdef ENABLE_SPEECH
+#if defined(ENABLE_SPEECH) && !defined(DISABLE_SPEECH)
 
 #include <Arduino.h>
 
@@ -46,4 +46,4 @@ void playTracks(String cmd);
 inline void speechInit() {}
 inline void playTracks(String) {}
 
-#endif  // ENABLE_SPEECH
+#endif  // ENABLE_SPEECH && !DISABLE_SPEECH

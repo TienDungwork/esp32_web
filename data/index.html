@@ -215,6 +215,11 @@
                 <label>Số lượng bảng LED:</label>
                 <input type="number" id="ledBoardCount" value="1" min="1" max="99">
               </div>
+              <div class="led-board-count">
+                <label>Giãn dòng (px):</label>
+                <input type="number" id="ledLineSpacing" value="-1" min="-1" max="40" step="1">
+                <span class="hint">-1: tự động theo cỡ chữ</span>
+              </div>
               <div class="led-rows-container">
                 <div class="led-row-header">
                   <span>Dòng</span><span>Chữ cố định</span><span>Nội dung hiển thị</span><span>Cỡ
@@ -669,6 +674,7 @@
     /* ══════════════════════════════════════════════════ */
     async function sendLedConfig() {
       const boardCount = document.getElementById('ledBoardCount').value;
+      const lineSpacing = parseInt(document.getElementById('ledLineSpacing')?.value ?? '-1', 10);
       const lines = [];
       for (let i = 1; i <= 5; i++) {
         lines.push({
@@ -679,7 +685,11 @@
           color: document.getElementById('ledColor' + i)?.value || '#00ff00'
         });
       }
-      const payload = { boardCount: parseInt(boardCount) || 1, lines };
+      const payload = {
+        boardCount: parseInt(boardCount, 10) || 1,
+        lineSpacing: Number.isNaN(lineSpacing) ? -1 : lineSpacing,
+        lines
+      };
       const msgEl = document.getElementById('ledMessage');
       msgEl.textContent = 'Đang gửi cấu hình LED...';
       try {
@@ -693,6 +703,39 @@
         if (!res.ok) { msgEl.textContent = `Lỗi ${res.status}: ${data.error || 'Gửi cấu hình LED thất bại.'}`; return; }
         msgEl.textContent = data.message || 'Đã gửi cấu hình LED.';
       } catch (e) { msgEl.textContent = e?.message ? `Lỗi: ${e.message}` : 'Lỗi khi gửi cấu hình LED.'; }
+    }
+
+    function applyLedConfigToForm(data) {
+      if (!data || typeof data !== 'object') return;
+
+      const boardCount = parseInt(data.boardCount, 10);
+      if (!Number.isNaN(boardCount)) {
+        document.getElementById('ledBoardCount').value = boardCount;
+      }
+
+      const lineSpacing = parseInt(data.lineSpacing, 10);
+      document.getElementById('ledLineSpacing').value = Number.isNaN(lineSpacing) ? -1 : lineSpacing;
+
+      const lines = Array.isArray(data.lines) ? data.lines : [];
+      for (let i = 1; i <= 5; i++) {
+        const item = lines.find(x => Number(x?.line) === i) || {};
+        document.getElementById('ledFixed' + i).value = item.fixed || '';
+        document.getElementById('ledText' + i).value = item.text || '';
+        document.getElementById('ledSize' + i).value = item.fontSize || 1.6;
+        document.getElementById('ledColor' + i).value = item.color || '#00ff00';
+      }
+    }
+
+    async function loadLedConfig() {
+      const msgEl = document.getElementById('ledMessage');
+      try {
+        const res = await fetch('/api/led/config');
+        if (!res.ok) throw new Error('Không tải được cấu hình LED');
+        const data = await res.json();
+        applyLedConfigToForm(data);
+      } catch (e) {
+        msgEl.textContent = 'Không tải được cấu hình LED đã lưu.';
+      }
     }
 
     /* ══════════════════════════════════════════════════ */
@@ -838,6 +881,7 @@
     /* ══════════════════════════════════════════════════ */
     window.addEventListener('load', () => {
       refreshNetworkStatus();
+      loadLedConfig();
     });
   </script>
 </body>

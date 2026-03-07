@@ -1,32 +1,21 @@
 #pragma once
 
 #include <Arduino.h>
+#include "pin_config.h"
 
 // ══════════════════════════════════════════════════
-//  PIN CONFIGURATION — sửa lại nếu board nối dây khác
-//  Các pin mặc định đã tránh xung đột với LED Matrix
-//  (LED dùng: LAT=7, CLK=15, B2=16, OE=21, ...)
+//  Barrier aliases from centralized pin map
 // ══════════════════════════════════════════════════
 
 #ifndef BARRIER_OPEN_PIN
-  #define BARRIER_OPEN_PIN   6   // Chân mở barie
+  #define BARRIER_OPEN_PIN   RELAY_OPEN_PIN
 #endif
 #ifndef BARRIER_CLOSE_PIN
-  #define BARRIER_CLOSE_PIN  8   // Chân đóng barie (gốc WeighAll: 7, đổi vì LED LAT)
-#endif
-
-#ifndef TRAFFIC_RED_PIN
-  #define TRAFFIC_RED_PIN    47  // Chân đèn đỏ (gốc WeighAll: 15, đổi vì LED CLK)
-#endif
-#ifndef TRAFFIC_YELLOW_PIN
-  #define TRAFFIC_YELLOW_PIN 1   // Chân đèn vàng
-#endif
-#ifndef TRAFFIC_GREEN_PIN
-  #define TRAFFIC_GREEN_PIN  42  // Chân đèn xanh (gốc WeighAll: 16, đổi vì LED B2)
+  #define BARRIER_CLOSE_PIN  RELAY_CLOSE_PIN
 #endif
 
 #ifndef BEAM_PIN
-  #define BEAM_PIN           2   // Chân lưới hồng ngoại (IR beam)
+  #define BEAM_PIN           BEAM_PWM1_IN_PIN
 #endif
 
 // ── Enums ──

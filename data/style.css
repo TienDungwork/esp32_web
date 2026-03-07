@@ -444,6 +444,10 @@ body {
   border-color: #1a1a2e;
 }
 
+.led-board-count .hint {
+  margin-top: 0;
+}
+
 .led-rows-container {
   border: 1px solid #e9ecef;
   border-radius: 8px;

@@ -14,6 +14,27 @@
 #include <HTTPUpdate.h>
 
 WebServer server(80);
+static const char* LED_CONFIG_FILE = "/led_config.json";
+
+static void sendDefaultLedConfig() {
+  DynamicJsonDocument doc(1024);
+  doc["boardCount"] = 1;
+  doc["lineSpacing"] = -1;
+
+  JsonArray lines = doc.createNestedArray("lines");
+  for (int i = 1; i <= 5; i++) {
+    JsonObject line = lines.createNestedObject();
+    line["line"] = i;
+    line["fixed"] = "";
+    line["text"] = "";
+    line["fontSize"] = 1.6f;
+    line["color"] = "#00ff00";
+  }
+
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
+}
 
 static String getContentType(const String& path) {
   if (path.endsWith(".html")) return "text/html";
@@ -268,9 +289,42 @@ static void handleLanPost() {
 
 static void handleLedConfigOptions() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
-  server.sendHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  server.sendHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
   server.send(204);
+}
+
+static void handleLedGetConfig() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Cache-Control", "no-cache");
+
+  if (!LittleFS.exists(LED_CONFIG_FILE)) {
+    sendDefaultLedConfig();
+    return;
+  }
+
+  File file = LittleFS.open(LED_CONFIG_FILE, "r");
+  if (!file) {
+    server.send(500, "application/json", "{\"error\":\"Cannot open LED config file\"}");
+    return;
+  }
+
+  String content = file.readString();
+  file.close();
+
+  DynamicJsonDocument doc(4096);
+  if (deserializeJson(doc, content) != DeserializationError::Ok) {
+    Serial.println("LED config file invalid JSON, fallback to defaults");
+    sendDefaultLedConfig();
+    return;
+  }
+
+  if (!doc.containsKey("boardCount")) doc["boardCount"] = 1;
+  if (!doc.containsKey("lineSpacing")) doc["lineSpacing"] = -1;
+
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
 }
 
 static void handleLedConfig() {
@@ -297,6 +351,7 @@ static void handleLedConfig() {
   }
 
   int boardCount = doc["boardCount"] | 1;
+  int lineSpacing = doc["lineSpacing"] | -1;
 
   String lines[5] = {"", "", "", "", ""};
   float fontSizes[5] = {1.6f, 1.6f, 1.6f, 1.6f, 1.6f};
@@ -328,7 +383,15 @@ static void handleLedConfig() {
     colors[lineNumber - 1] = ledMatrixParseColor(colorHex, LED_COLOR_GREEN);
   }
 
-  ledMatrixShowMultiLine(lines, fontSizes, colors, 5, boardCount);
+  ledMatrixShowMultiLine(lines, fontSizes, colors, 5, boardCount, lineSpacing);
+
+  File file = LittleFS.open(LED_CONFIG_FILE, "w");
+  if (file) {
+    serializeJson(doc, file);
+    file.close();
+  } else {
+    Serial.println("LED config save failed: cannot open file");
+  }
 
   DynamicJsonDocument resp(256);
   resp["success"] = true;
@@ -617,6 +680,7 @@ void webServerInit() {
 
   // ── LED ──
   server.on("/api/led/config", HTTP_OPTIONS, handleLedConfigOptions);
+  server.on("/api/led/config", HTTP_GET, handleLedGetConfig);
   server.on("/api/led/config", HTTP_POST, handleLedConfig);
 
   // ── Device Control ──
@@ -637,6 +701,7 @@ void webServerInit() {
   server.begin();
   Serial.println("WebServer started");
   Serial.println("API endpoints:");
+  Serial.println("  GET  /api/led/config");
   Serial.println("  POST /api/led/config");
   Serial.println("  POST /api/barrier/control");
   Serial.println("  POST /api/traffic-light/control");
