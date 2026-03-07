@@ -8,8 +8,6 @@
 #include "network.h"
 #include "led_matrix.h"
 #include "device_control.h"
-#include "printer.h"
-#include "speech.h"
 
 #include <HTTPUpdate.h>
 
@@ -519,89 +517,6 @@ static void handleTrafficLight() {
 }
 
 // ══════════════════════════════════════════════════
-//  Speech Play
-// ══════════════════════════════════════════════════
-static void handleSpeechPlay() {
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-
-  String body = server.arg("plain");
-  if (body.length() == 0) {
-    server.send(400, "application/json", "{\"error\":\"No data provided\"}");
-    return;
-  }
-
-  DynamicJsonDocument doc(256);
-  if (deserializeJson(doc, body) != DeserializationError::Ok) {
-    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
-    return;
-  }
-
-  String tracks = doc["tracks"].as<String>();
-  if (tracks.length() == 0) {
-    server.send(400, "application/json", "{\"error\":\"No tracks specified\"}");
-    return;
-  }
-
-  // Gửi response trước vì playTracks() là blocking
-  DynamicJsonDocument resp(128);
-  resp["success"] = true;
-  resp["tracks"] = tracks;
-  String out;
-  serializeJson(resp, out);
-  server.send(200, "application/json", out);
-
-  playTracks(tracks);
-}
-
-// ══════════════════════════════════════════════════
-//  Printer
-// ══════════════════════════════════════════════════
-static void handlePrinterPrint() {
-  server.sendHeader("Access-Control-Allow-Origin", "*");
-
-  String body = server.arg("plain");
-  if (body.length() == 0) {
-    server.send(400, "application/json", "{\"error\":\"No data provided\"}");
-    return;
-  }
-
-  DynamicJsonDocument doc(1024);
-  if (deserializeJson(doc, body) != DeserializationError::Ok) {
-    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
-    return;
-  }
-
-  String type = doc["type"] | "text";
-  String text = doc["text"].as<String>();
-  bool bold = doc["bold"] | false;
-  int align = doc["align"] | 0;
-
-  printer_reset();
-  printer_set_bold(bold);
-  printer_set_alignment((uint8_t)align);
-
-  if (type == "text") {
-    printer_println(text.c_str());
-  } else if (type == "barcode") {
-    printer_set_barcode_height(80);
-    printer_set_barcode_width(2);
-    printer_print_barcode(text.c_str(), 73);
-  } else if (type == "qrcode") {
-    uint8_t zoom = doc["zoom"] | 6;
-    printer_print_qrcode(text.c_str(), 0, 0, zoom);
-  }
-
-  printer_new_line(3);
-
-  DynamicJsonDocument resp(128);
-  resp["success"] = true;
-  resp["type"] = type;
-  String out;
-  serializeJson(resp, out);
-  server.send(200, "application/json", out);
-}
-
-// ══════════════════════════════════════════════════
 //  OTA Update
 // ══════════════════════════════════════════════════
 static void handleOtaUpdate() {
@@ -744,10 +659,6 @@ void webServerInit() {
   server.on("/api/barrier/control",       HTTP_POST,    handleBarrierControl);
   server.on("/api/traffic-light/control", HTTP_OPTIONS, handleApiOptions);
   server.on("/api/traffic-light/control", HTTP_POST,    handleTrafficLight);
-  server.on("/api/speech/play",           HTTP_OPTIONS, handleApiOptions);
-  server.on("/api/speech/play",           HTTP_POST,    handleSpeechPlay);
-  server.on("/api/printer/print",         HTTP_OPTIONS, handleApiOptions);
-  server.on("/api/printer/print",         HTTP_POST,    handlePrinterPrint);
   server.on("/api/ota/update",            HTTP_OPTIONS, handleApiOptions);
   server.on("/api/ota/update",            HTTP_POST,    handleOtaUpdate);
   server.on("/api/device/status",         HTTP_GET,     handleDeviceStatus);
@@ -762,8 +673,6 @@ void webServerInit() {
   Serial.println("  POST /api/led/config");
   Serial.println("  POST /api/barrier/control");
   Serial.println("  POST /api/traffic-light/control");
-  Serial.println("  POST /api/speech/play");
-  Serial.println("  POST /api/printer/print");
   Serial.println("  POST /api/ota/update");
   Serial.println("  GET  /api/device/status");
 }

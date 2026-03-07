@@ -14,8 +14,6 @@
 #include "network.h"
 #include "web_server.h"
 #include "device_control.h"
-#include "printer.h"
-#include "speech.h"
 
 static void logLittleFsFiles() {
   File root = LittleFS.open("/");
@@ -72,12 +70,6 @@ void setup() {
 
   // Khởi tạo device control (GPIO: barrier, traffic, beam)
   deviceControlInit();
-
-  // Khởi tạo máy in (Serial2)
-  printerSetup();
-
-  // Khởi tạo speech (tùy chọn, chỉ hoạt động khi ENABLE_SPEECH)
-  speechInit();
 
   webServerInit();
 
