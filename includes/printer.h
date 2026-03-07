@@ -15,7 +15,7 @@ extern "C" {
   #define PRINTER_TX_PIN  4   // RS232/RS485 TX (WeighAll gốc: 4)
 #endif
 #ifndef PRINTER_RX_PIN
-  #define PRINTER_RX_PIN  5   // RS232/RS485 RX (WeighAll gốc: 5)
+  #define PRINTER_RX_PIN  -1  // Disable RX to avoid conflict with RELAY_CLOSE_PIN (GPIO5)
 #endif
 #ifndef PRINTER_BAUD
   #define PRINTER_BAUD    9600

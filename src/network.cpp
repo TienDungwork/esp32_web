@@ -91,10 +91,8 @@ void loadWiFiConfig() {
     Serial.println("No WiFi config found, using defaults");
   }
 
-  // TẠM FIX CỨNG - XÓA KHI XONG TEST
-  wifi_ssid = "Phuc An";
-  wifi_password = "88889999";
-  Serial.println("WiFi TEST: " + wifi_ssid);
+  Serial.println("WiFi runtime config: SSID=" + wifi_ssid +
+                 " staticIP=" + String(wifi_use_static_ip ? "true" : "false"));
 }
 
 void saveWiFiConfig(const String& ssid,

@@ -41,15 +41,15 @@
 // Beam sensor wiring
 // ---------------------------------------------------------
 #ifndef BEAM_PWM1_IN_PIN
-  #define BEAM_PWM1_IN_PIN 39
+  #define BEAM_PWM1_IN_PIN 39   // PWM1 signal into ESP
 #endif
 
 #ifndef BEAM_PWM2_OUT_PIN
-  #define BEAM_PWM2_OUT_PIN 40
+  #define BEAM_PWM2_OUT_PIN 40  // PWM2 signal into ESP
 #endif
 
 #ifndef BEAM_A0_PIN
-  #define BEAM_A0_PIN 4
+  #define BEAM_A0_PIN 4         // A0 signal into ESP
 #endif
 
 // ---------------------------------------------------------

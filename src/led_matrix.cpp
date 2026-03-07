@@ -29,9 +29,10 @@ void ledMatrixInit() {
 
   HUB75_I2S_CFG mxconfig(PANEL_RES_X, PANEL_RES_Y, PANEL_CHAIN, _pins);
 
+  // Timing tuned for stability (reduce ghosting/noise on long cable chains)
   mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_8M;
-  mxconfig.latch_blanking = 2;
-  mxconfig.clkphase = true;
+  mxconfig.latch_blanking = 6;
+  mxconfig.clkphase = false;
   mxconfig.double_buff = false;
 
   dma_display = new MatrixPanel_I2S_DMA(mxconfig);
@@ -51,7 +52,7 @@ void ledMatrixInit() {
   LED_COLOR_YELLOW = dma_display->color565(255, 255, 0);
   LED_COLOR_CYAN = dma_display->color565(0, 255, 255);
 
-  dma_display->setBrightness8(180);
+  dma_display->setBrightness8(140);
   dma_display->clearScreen();
 
   if (!virtual_display) {

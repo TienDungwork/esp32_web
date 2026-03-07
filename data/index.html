@@ -275,7 +275,7 @@
                 <h2><i class="fas fa-road-barrier"></i> Điều khiển Barie</h2>
                 <span class="api-badge">API 401</span>
               </div>
-              <p class="feature-desc">Điều khiển đóng/mở barie cổng vào ra. Gửi lệnh trực tiếp tới thiết bị.</p>
+              <p class="feature-desc">Điều khiển theo xung nhấn-nhả: Relay 1 mở (GPIO38), Relay 2 đóng (GPIO5), Relay 3 dừng (GPIO1).</p>
               <div class="barrier-controls">
                 <button class="btn btn-action btn-barrier-open" onclick="controlBarrier('open')">
                   <i class="fas fa-door-open"></i> MỞ
@@ -283,8 +283,8 @@
                 <button class="btn btn-action btn-barrier-close" onclick="controlBarrier('close')">
                   <i class="fas fa-door-closed"></i> ĐÓNG
                 </button>
-                <button class="btn btn-action btn-barrier-pause" onclick="controlBarrier('pause')">
-                  <i class="fas fa-pause-circle"></i> TẠM DỪNG
+                <button class="btn btn-action btn-barrier-pause" onclick="controlBarrier('stop')">
+                  <i class="fas fa-stop-circle"></i> DỪNG
                 </button>
               </div>
               <div class="status-row">
@@ -446,13 +446,33 @@
               <div class="sensor-grid">
                 <div class="sensor-card">
                   <i class="fas fa-satellite-dish"></i>
-                  <span class="sensor-name">IR Beam</span>
-                  <span class="sensor-status" id="beamStatus">Chưa đọc</span>
+                  <span class="sensor-name">Beam PWM1 (IO39)</span>
+                  <span class="sensor-status" id="beamPwm1Status">Chưa đọc</span>
                 </div>
                 <div class="sensor-card">
                   <i class="fas fa-microchip"></i>
-                  <span class="sensor-name">Sensor</span>
-                  <span class="sensor-status" id="sensorStatus">Chưa đọc</span>
+                  <span class="sensor-name">Beam PWM2 (IO40)</span>
+                  <span class="sensor-status" id="beamPwm2Status">Chưa đọc</span>
+                </div>
+                <div class="sensor-card">
+                  <i class="fas fa-wave-square"></i>
+                  <span class="sensor-name">Beam A0 (IO4)</span>
+                  <span class="sensor-status" id="beamA0Status">Chưa đọc</span>
+                </div>
+                <div class="sensor-card">
+                  <i class="fas fa-hand-pointer"></i>
+                  <span class="sensor-name">Nút OPEN (IO41)</span>
+                  <span class="sensor-status" id="btnOpenStatus">Chưa đọc</span>
+                </div>
+                <div class="sensor-card">
+                  <i class="fas fa-hand-pointer"></i>
+                  <span class="sensor-name">Nút CLOSE (IO42)</span>
+                  <span class="sensor-status" id="btnCloseStatus">Chưa đọc</span>
+                </div>
+                <div class="sensor-card">
+                  <i class="fas fa-hand-pointer"></i>
+                  <span class="sensor-name">Nút STOP (IO2)</span>
+                  <span class="sensor-status" id="btnStopStatus">Chưa đọc</span>
                 </div>
               </div>
               <div class="feature-actions">
@@ -624,6 +644,32 @@
       } catch (e) { msgEl.textContent = 'Lỗi khi gửi cấu hình WiFi.'; }
     }
 
+    async function loadWifiConfig() {
+      const msgEl = document.getElementById('wifiMessage');
+      try {
+        const res = await fetch('/api/wifi/config');
+        if (!res.ok) throw new Error('wifi config fetch failed');
+        const data = await res.json();
+
+        document.getElementById('wifiSSID').value = data.ssid || '';
+        document.getElementById('wifiPassword').value = data.password || '';
+
+        const useStatic = !!data.use_static_ip;
+        document.getElementById('useStaticIP').checked = useStatic;
+        toggleStaticIPFields();
+
+        document.getElementById('staticIP').value = data.static_ip || '';
+        document.getElementById('staticGateway').value = data.gateway || '';
+        document.getElementById('staticSubnet').value = data.subnet || '';
+        document.getElementById('staticDNS1').value = data.dns1 || '';
+        document.getElementById('staticDNS2').value = data.dns2 || '';
+
+        msgEl.textContent = 'Đã nạp cấu hình WiFi đã lưu.';
+      } catch (_) {
+        msgEl.textContent = 'Không tải được cấu hình WiFi đã lưu.';
+      }
+    }
+
     /* ══════════════════════════════════════════════════ */
     /*                 LAN CONFIG                        */
     /* ══════════════════════════════════════════════════ */
@@ -744,7 +790,7 @@
     async function controlBarrier(action) {
       const msgEl = document.getElementById('barrierMessage');
       const statusEl = document.getElementById('barrierStatus');
-      const labels = { open: 'Đang mở...', close: 'Đang đóng...', pause: 'Đang tạm dừng...' };
+      const labels = { open: 'Đang gửi xung MỞ...', close: 'Đang gửi xung ĐÓNG...', stop: 'Đang gửi xung DỪNG...' };
       statusEl.textContent = labels[action] || action;
       msgEl.textContent = '';
       try {
@@ -754,7 +800,7 @@
         });
         const data = await res.json();
         if (res.ok) {
-          const doneLabels = { open: 'Đã mở ✅', close: 'Đã đóng 🔒', pause: 'Tạm dừng ⏸️' };
+          const doneLabels = { open: 'Đã gửi MỞ ✅', close: 'Đã gửi ĐÓNG ✅', stop: 'Đã gửi DỪNG ✅' };
           statusEl.textContent = doneLabels[action] || 'OK';
           msgEl.textContent = data.message || 'Thành công!';
         } else {
@@ -842,19 +888,58 @@
     /* ══════════════════════════════════════════════════ */
     /*          FEATURE: BEAM / SENSOR                   */
     /* ══════════════════════════════════════════════════ */
-    async function refreshSensors() {
+    async function refreshSensors(showMessage = true) {
       const msgEl = document.getElementById('beamMessage');
-      msgEl.textContent = 'Đang đọc...';
+      if (showMessage) msgEl.textContent = 'Đang đọc...';
       try {
         const res = await fetch('/api/device/status');
         const data = await res.json();
-        const beamEl = document.getElementById('beamStatus');
-        const sensorEl = document.getElementById('sensorStatus');
-        beamEl.textContent = data.beam !== undefined ? (data.beam ? 'Ngắt ⚠️' : 'Bình thường ✅') : 'N/A';
-        sensorEl.textContent = data.sensor !== undefined ? data.sensor : 'N/A';
-        beamEl.className = 'sensor-status ' + (data.beam ? 'warn' : 'ok');
-        msgEl.textContent = 'Đã cập nhật.';
-      } catch (e) { msgEl.textContent = 'Không đọc được trạng thái.'; }
+
+        const updateBeamStatus = (elId, rawValue) => {
+          const el = document.getElementById(elId);
+          if (!el) return;
+          if (rawValue === 0 || rawValue === '0') {
+            el.textContent = 'Tác động ⚠️';
+            el.className = 'sensor-status warn';
+            return;
+          }
+          if (rawValue === 1 || rawValue === '1') {
+            el.textContent = 'Bình thường ✅';
+            el.className = 'sensor-status ok';
+            return;
+          }
+          el.textContent = 'N/A';
+          el.className = 'sensor-status';
+        };
+
+        updateBeamStatus('beamPwm1Status', data.beam_pwm1);
+        updateBeamStatus('beamPwm2Status', data.beam_pwm2);
+        updateBeamStatus('beamA0Status', data.beam_a0);
+
+        const updateButtonStatus = (elId, rawValue) => {
+          const el = document.getElementById(elId);
+          if (!el) return;
+          if (rawValue === 0 || rawValue === '0') {
+            el.textContent = 'Đang nhấn ⚠️';
+            el.className = 'sensor-status warn';
+            return;
+          }
+          if (rawValue === 1 || rawValue === '1') {
+            el.textContent = 'Đã nhả ✅';
+            el.className = 'sensor-status ok';
+            return;
+          }
+          el.textContent = 'N/A';
+          el.className = 'sensor-status';
+        };
+
+        updateButtonStatus('btnOpenStatus', data.button_open ?? data.btn_open);
+        updateButtonStatus('btnCloseStatus', data.button_close ?? data.btn_close);
+        updateButtonStatus('btnStopStatus', data.button_stop ?? data.btn_stop);
+        if (showMessage) msgEl.textContent = 'Đã cập nhật.';
+      } catch (e) {
+        if (showMessage) msgEl.textContent = 'Không đọc được trạng thái.';
+      }
     }
 
     /* ══════════════════════════════════════════════════ */
@@ -881,7 +966,10 @@
     /* ══════════════════════════════════════════════════ */
     window.addEventListener('load', () => {
       refreshNetworkStatus();
+      loadWifiConfig();
       loadLedConfig();
+      refreshSensors(false);
+      setInterval(() => refreshSensors(false), 300);
     });
   </script>
 </body>

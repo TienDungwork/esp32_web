@@ -53,8 +53,7 @@ static bool serveStaticFile(const String& rawPath) {
   if (path.length() == 0 || path == "/") path = "/index.html";
   if (!path.startsWith("/")) path = "/" + path;
 
-  String pathNoSlash = path.substring(1);
-  String usePath = LittleFS.exists(path) ? path : (LittleFS.exists(pathNoSlash) ? pathNoSlash : "");
+  String usePath = LittleFS.exists(path) ? path : "";
   if (usePath.length() == 0) return false;
 
   File f = LittleFS.open(usePath, "r");
@@ -68,6 +67,13 @@ static bool serveStaticFile(const String& rawPath) {
   return true;
 }
 
+static bool shouldTryStaticFallback(HTTPMethod method, const String& uri) {
+  if (method != HTTP_GET) return false;
+  if (uri.startsWith("/api/")) return false;
+  if (uri == "/" || uri == "/index.html") return true;
+  return uri.indexOf('.') >= 0;
+}
+
 static void handleRoot() {
   if (serveStaticFile("/index.html")) return;
   server.send(200, "text/plain", "index.html not found");
@@ -79,8 +85,27 @@ static void handleNotFound() {
   Serial.print(" uri=");
   Serial.println(server.uri());
 
-  if (serveStaticFile(server.uri())) return;
+  if (shouldTryStaticFallback(server.method(), server.uri()) && serveStaticFile(server.uri())) return;
   server.send(404, "text/plain", "Not found");
+}
+
+static void handleWifiConfigGet() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Cache-Control", "no-cache");
+
+  DynamicJsonDocument doc(512);
+  doc["ssid"] = wifi_ssid;
+  doc["password"] = wifi_password;
+  doc["use_static_ip"] = wifi_use_static_ip;
+  doc["static_ip"] = wifi_static_ip.toString();
+  doc["gateway"] = wifi_gateway.toString();
+  doc["subnet"] = wifi_subnet.toString();
+  doc["dns1"] = wifi_dns1.toString();
+  doc["dns2"] = wifi_dns2.toString();
+
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
 }
 
 static void handleNetworkStatus() {
@@ -426,9 +451,9 @@ static void handleBarrierControl() {
 
   if (action == "open")       state = BARRIER_OPEN;
   else if (action == "close") state = BARRIER_CLOSE;
-  else if (action == "pause") state = BARRIER_PAUSE;
+  else if (action == "stop" || action == "pause") state = BARRIER_PAUSE;
   else {
-    server.send(400, "application/json", "{\"error\":\"Invalid action. Use: open, close, pause\"}");
+    server.send(400, "application/json", "{\"error\":\"Invalid action. Use: open, close, stop\"}");
     return;
   }
 
@@ -627,7 +652,7 @@ static const char* barrierStateToStr(BarrierState s) {
     case BARRIER_OPEN:  return "open";
     case BARRIER_CLOSE: return "close";
     case BARRIER_PAUSE:
-    default:            return "pause";
+    default:            return "stop";
   }
 }
 
@@ -646,10 +671,25 @@ static void handleDeviceStatus() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.sendHeader("Cache-Control", "no-cache");
 
-  DynamicJsonDocument doc(512);
+  DynamicJsonDocument doc(1024);
   doc["barrier"] = barrierStateToStr(getBarrierState());
   doc["traffic_light"] = trafficStateToStr(getTrafficLightState());
-  doc["beam"] = readBeam();
+  // Keep legacy key for existing UI compatibility
+  doc["beam"] = readBeamPwm1();
+
+  doc["beam_pwm1"] = readBeamPwm1();
+  doc["beam_pwm2"] = readBeamPwm2();
+  doc["beam_a0"] = readBeamA0();
+
+  doc["btn_open"] = readButtonOpen();
+  doc["btn_close"] = readButtonClose();
+  doc["btn_stop"] = readButtonStop();
+  doc["button_open"] = readButtonOpen();
+  doc["button_close"] = readButtonClose();
+  doc["button_stop"] = readButtonStop();
+  doc["btn_open_pressed"] = (readButtonOpen() == LOW);
+  doc["btn_close_pressed"] = (readButtonClose() == LOW);
+  doc["btn_stop_pressed"] = (readButtonStop() == LOW);
   doc["uptime_ms"] = millis();
 
   String out;
@@ -674,9 +714,15 @@ void webServerInit() {
   // ── Network ──
   server.on("/api/network/status", HTTP_GET, handleNetworkStatus);
   server.on("/api/wifi/scan", HTTP_GET, handleWifiScan);
+  server.on("/api/wifi/config", HTTP_GET, handleWifiConfigGet);
   server.on("/api/wifi/connect", HTTP_POST, handleWifiConnect);
   server.on("/api/lan", HTTP_GET, handleLanGet);
   server.on("/api/lan", HTTP_POST, handleLanPost);
+
+  // Ignore stray probing requests (e.g. browser extensions / tooling)
+  server.on("/chat", HTTP_ANY, []() {
+    server.send(204, "text/plain", "");
+  });
 
   // ── LED ──
   server.on("/api/led/config", HTTP_OPTIONS, handleLedConfigOptions);
@@ -701,6 +747,7 @@ void webServerInit() {
   server.begin();
   Serial.println("WebServer started");
   Serial.println("API endpoints:");
+  Serial.println("  GET  /api/wifi/config");
   Serial.println("  GET  /api/led/config");
   Serial.println("  POST /api/led/config");
   Serial.println("  POST /api/barrier/control");

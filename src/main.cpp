@@ -86,5 +86,6 @@ void setup() {
 
 void loop() {
   webServerHandleClient();
+  deviceControlLoop();
   trafficLightLoop();  // Xử lý chế độ nhấp nháy đèn đỏ
 }

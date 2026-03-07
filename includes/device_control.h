@@ -37,6 +37,7 @@ enum TrafficLightState {
 // ── API ──
 
 void deviceControlInit();
+void deviceControlLoop();
 
 void barrierControl(BarrierState state);
 BarrierState getBarrierState();
@@ -48,3 +49,10 @@ TrafficLightState getTrafficLightState();
 void trafficLightLoop();
 
 int readBeam();
+int readBeamPwm1();
+int readBeamPwm2();
+int readBeamA0();
+
+int readButtonOpen();
+int readButtonClose();
+int readButtonStop();
