@@ -461,6 +461,8 @@
     /* ══════════════════════════════════════════════════ */
     /*          FEATURE: TRAFFIC LIGHT                   */
     /* ══════════════════════════════════════════════════ */
+    let trafficSelectionDirty = false;
+
     async function controlTrafficLight() {
       const state = document.querySelector('input[name="trafficState"]:checked')?.value || 'red';
       const msgEl = document.getElementById('trafficMessage');
@@ -472,6 +474,9 @@
         });
         const data = await res.json();
         msgEl.textContent = res.ok ? (data.message || 'Đã áp dụng!') : (data.error || 'Lỗi.');
+        if (res.ok) {
+          trafficSelectionDirty = false;
+        }
       } catch (e) { msgEl.textContent = 'Không gửi được lệnh.'; }
     }
 
@@ -490,7 +495,10 @@
       }
 
       const trafficState = String(data.traffic_light || '').toLowerCase();
-      if (trafficState === 'green' || trafficState === 'red' || trafficState === 'yellow') {
+      const trafficPanelActive = !!document.getElementById('panel-traffic')?.classList.contains('active');
+      const shouldSyncTrafficRadio = !(trafficPanelActive && trafficSelectionDirty);
+
+      if (shouldSyncTrafficRadio && (trafficState === 'green' || trafficState === 'red' || trafficState === 'yellow')) {
         const trafficRadio = document.querySelector(`input[name="trafficState"][value="${trafficState}"]`);
         if (trafficRadio) trafficRadio.checked = true;
       }
@@ -607,6 +615,12 @@
     /*                    INIT                           */
     /* ══════════════════════════════════════════════════ */
     window.addEventListener('load', () => {
+      document.querySelectorAll('input[name="trafficState"]').forEach((input) => {
+        input.addEventListener('change', () => {
+          trafficSelectionDirty = true;
+        });
+      });
+
       refreshNetworkStatus();
       loadCurrentFirmwareVersion();
       loadWifiConfig();

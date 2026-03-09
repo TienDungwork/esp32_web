@@ -53,16 +53,19 @@
 #endif
 
 // ---------------------------------------------------------
-// Traffic light (moved off pins used by button/relay mapping)
+// Traffic light shares the same 3 relay IO as barrier
+// RED    -> RELAY_OPEN_PIN
+// YELLOW -> RELAY_STOP_PIN
+// GREEN  -> RELAY_CLOSE_PIN
 // ---------------------------------------------------------
 #ifndef TRAFFIC_RED_PIN
-  #define TRAFFIC_RED_PIN 47
+  #define TRAFFIC_RED_PIN RELAY_OPEN_PIN
 #endif
 
 #ifndef TRAFFIC_YELLOW_PIN
-  #define TRAFFIC_YELLOW_PIN 6
+  #define TRAFFIC_YELLOW_PIN RELAY_STOP_PIN
 #endif
 
 #ifndef TRAFFIC_GREEN_PIN
-  #define TRAFFIC_GREEN_PIN 8
+  #define TRAFFIC_GREEN_PIN RELAY_CLOSE_PIN
 #endif
