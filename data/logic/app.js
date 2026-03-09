@@ -188,6 +188,138 @@
     }
 
     /* ══════════════════════════════════════════════════ */
+    /*             APP SERVER TCP CONFIG                 */
+    /* ══════════════════════════════════════════════════ */
+    function getAppServerPayloadFromForm() {
+      const ip = document.getElementById('appServerIp')?.value?.trim() || '';
+      const port = parseInt(document.getElementById('appServerPort')?.value || '0', 10);
+      const idType = parseInt(document.getElementById('appServerIdType')?.value || '1', 10);
+      const autoReconnect = !!document.getElementById('appServerAutoReconnect')?.checked;
+      return {
+        ip,
+        port: Number.isNaN(port) ? 0 : port,
+        id_type: Number.isNaN(idType) ? 1 : idType,
+        auto_reconnect: autoReconnect
+      };
+    }
+
+    function applyAppServerConfigToForm(data) {
+      if (!data || typeof data !== 'object') return;
+      document.getElementById('appServerIp').value = data.ip || '';
+      document.getElementById('appServerPort').value = data.port || '';
+      document.getElementById('appServerIdType').value = data.id_type || 1;
+      document.getElementById('appServerAutoReconnect').checked = !!data.auto_reconnect;
+    }
+
+    function setAppServerStatusText(connected, lastError = '') {
+      const stateEl = document.getElementById('appServerConnState');
+      if (!stateEl) return;
+
+      if (connected) {
+        stateEl.textContent = 'Đã kết nối';
+        stateEl.style.color = '#198754';
+      } else {
+        stateEl.textContent = lastError ? `Mất kết nối (${lastError})` : 'Chưa kết nối';
+        stateEl.style.color = '#dc3545';
+      }
+    }
+
+    async function loadAppServerConfig() {
+      const msgEl = document.getElementById('appServerMessage');
+      msgEl.textContent = 'Đang tải cấu hình server...';
+      try {
+        const res = await fetch('/api/app-server/config');
+        if (!res.ok) throw new Error('config error');
+        const data = await res.json();
+        applyAppServerConfigToForm(data);
+        msgEl.textContent = 'Đã tải cấu hình server.';
+      } catch (_) {
+        msgEl.textContent = 'Không tải được cấu hình server.';
+      }
+
+      await refreshAppServerStatus();
+    }
+
+    async function refreshAppServerStatus() {
+      try {
+        const res = await fetch('/api/app-server/status');
+        if (!res.ok) throw new Error('status error');
+        const data = await res.json();
+        setAppServerStatusText(!!data.connected, data.last_error || '');
+      } catch (_) {
+        setAppServerStatusText(false, 'status unavailable');
+      }
+    }
+
+    async function saveAppServerConfig() {
+      const msgEl = document.getElementById('appServerMessage');
+      const payload = {
+        ...getAppServerPayloadFromForm(),
+        enabled: false
+      };
+
+      if (!payload.ip) { msgEl.textContent = 'Vui lòng nhập IP server.'; return; }
+      if (payload.port < 1 || payload.port > 65535) { msgEl.textContent = 'Port phải từ 1..65535.'; return; }
+      if (payload.id_type < 1 || payload.id_type > 255) { msgEl.textContent = 'ID Type phải từ 1..255.'; return; }
+
+      msgEl.textContent = 'Đang lưu cấu hình server...';
+      try {
+        const res = await fetch('/api/app-server/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        msgEl.textContent = res.ok ? (data.message || 'Đã lưu cấu hình server.') : (data.error || 'Lưu thất bại.');
+      } catch (_) {
+        msgEl.textContent = 'Lỗi khi lưu cấu hình server.';
+      }
+    }
+
+    async function connectAppServer() {
+      const msgEl = document.getElementById('appServerMessage');
+      const payload = getAppServerPayloadFromForm();
+
+      if (!payload.ip) { msgEl.textContent = 'Vui lòng nhập IP server.'; return; }
+      if (payload.port < 1 || payload.port > 65535) { msgEl.textContent = 'Port phải từ 1..65535.'; return; }
+      if (payload.id_type < 1 || payload.id_type > 255) { msgEl.textContent = 'ID Type phải từ 1..255.'; return; }
+
+      msgEl.textContent = 'Đang kết nối tới server...';
+      try {
+        const res = await fetch('/api/app-server/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        msgEl.textContent = res.ok
+          ? (data.message || 'Đã kết nối server.')
+          : (data.error || data.message || 'Kết nối thất bại.');
+      } catch (_) {
+        msgEl.textContent = 'Không kết nối được server.';
+      }
+
+      await refreshAppServerStatus();
+    }
+
+    async function disconnectAppServer() {
+      const msgEl = document.getElementById('appServerMessage');
+      msgEl.textContent = 'Đang ngắt kết nối server...';
+      try {
+        const res = await fetch('/api/app-server/disconnect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        msgEl.textContent = res.ok ? (data.message || 'Đã ngắt kết nối.') : (data.error || 'Ngắt kết nối thất bại.');
+      } catch (_) {
+        msgEl.textContent = 'Không gửi được lệnh ngắt kết nối.';
+      }
+
+      await refreshAppServerStatus();
+    }
+
+    /* ══════════════════════════════════════════════════ */
     /*          FEATURES – SIDEBAR SELECTION             */
     /* ══════════════════════════════════════════════════ */
     function selectFeature(featureId, el) {
@@ -413,7 +545,9 @@
       refreshNetworkStatus();
       loadCurrentFirmwareVersion();
       loadWifiConfig();
+      loadAppServerConfig();
       loadLedConfig();
       refreshSensors(false);
       setInterval(() => refreshSensors(false), 300);
+      setInterval(() => refreshAppServerStatus(), 3000);
     });

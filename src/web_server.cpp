@@ -13,6 +13,18 @@
 
 WebServer server(80);
 static const char* LED_CONFIG_FILE = "/led_config.json";
+static const char* APP_SERVER_CONFIG_FILE = "/app_server_config.json";
+
+static WiFiClient appServerClient;
+static String appServerIp = "";
+static uint16_t appServerPort = 0;
+static uint8_t appServerIdType = 1;
+static bool appServerAutoReconnect = true;
+static bool appServerEnabled = false;
+static unsigned long appServerLastConnectAttemptMs = 0;
+static unsigned long appServerLastConnectedAtMs = 0;
+static unsigned long appServerLastRxAtMs = 0;
+static String appServerLastError = "";
 
 #ifndef APP_FIRMWARE_VERSION
   #define APP_FIRMWARE_VERSION "dev"
@@ -20,6 +32,245 @@ static const char* LED_CONFIG_FILE = "/led_config.json";
 
 static String getFirmwareBuildStamp() {
   return String(__DATE__) + " " + String(__TIME__);
+}
+
+static bool hasNetworkUplink() {
+  return ethernetConnected || wifiConnected;
+}
+
+static void loadAppServerConfig() {
+  appServerIp = "";
+  appServerPort = 0;
+  appServerIdType = 1;
+  appServerAutoReconnect = true;
+  appServerEnabled = false;
+
+  if (!LittleFS.exists(APP_SERVER_CONFIG_FILE)) return;
+
+  File file = LittleFS.open(APP_SERVER_CONFIG_FILE, "r");
+  if (!file) return;
+
+  DynamicJsonDocument doc(512);
+  DeserializationError err = deserializeJson(doc, file);
+  file.close();
+  if (err != DeserializationError::Ok) return;
+
+  appServerIp = doc["ip"].as<String>();
+  appServerPort = static_cast<uint16_t>(doc["port"] | 0);
+  appServerIdType = static_cast<uint8_t>(doc["id_type"] | 1);
+  appServerAutoReconnect = doc["auto_reconnect"] | true;
+  appServerEnabled = doc["enabled"] | false;
+
+  if (appServerIdType < 1 || appServerIdType > 255) appServerIdType = 1;
+}
+
+static void saveAppServerConfig() {
+  DynamicJsonDocument doc(512);
+  doc["ip"] = appServerIp;
+  doc["port"] = appServerPort;
+  doc["id_type"] = appServerIdType;
+  doc["auto_reconnect"] = appServerAutoReconnect;
+  doc["enabled"] = appServerEnabled;
+
+  File file = LittleFS.open(APP_SERVER_CONFIG_FILE, "w");
+  if (!file) return;
+  serializeJson(doc, file);
+  file.close();
+}
+
+static bool appServerConnectNow() {
+  appServerLastConnectAttemptMs = millis();
+
+  if (!hasNetworkUplink()) {
+    appServerLastError = "No WiFi STA/Ethernet uplink";
+    return false;
+  }
+
+  appServerIp.trim();
+  if (appServerIp.length() == 0 || appServerPort == 0) {
+    appServerLastError = "IP/Port is empty or invalid";
+    return false;
+  }
+
+  if (appServerClient.connected()) {
+    appServerLastError = "";
+    return true;
+  }
+
+  appServerClient.stop();
+  appServerClient.setTimeout(1500);
+
+  bool ok = appServerClient.connect(appServerIp.c_str(), appServerPort);
+  if (!ok) {
+    appServerLastError = "Connect failed";
+    return false;
+  }
+
+  appServerLastConnectedAtMs = millis();
+  appServerLastError = "";
+  return true;
+}
+
+static void appServerDisconnect() {
+  if (appServerClient.connected()) {
+    appServerClient.stop();
+  }
+}
+
+static void appServerLoop() {
+  if (appServerClient.connected()) {
+    while (appServerClient.available() > 0) {
+      appServerClient.read();
+      appServerLastRxAtMs = millis();
+    }
+    return;
+  }
+
+  if (!appServerEnabled || !appServerAutoReconnect) return;
+
+  const unsigned long retryIntervalMs = 5000;
+  if (millis() - appServerLastConnectAttemptMs >= retryIntervalMs) {
+    appServerConnectNow();
+  }
+}
+
+static void handleAppServerConfigGet() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Cache-Control", "no-cache");
+
+  DynamicJsonDocument doc(512);
+  doc["ip"] = appServerIp;
+  doc["port"] = appServerPort;
+  doc["id_type"] = appServerIdType;
+  doc["auto_reconnect"] = appServerAutoReconnect;
+  doc["enabled"] = appServerEnabled;
+
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
+}
+
+static void handleAppServerConfigPost() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+
+  String body = server.arg("plain");
+  if (body.length() == 0) {
+    server.send(400, "application/json", "{\"error\":\"No data provided\"}");
+    return;
+  }
+
+  DynamicJsonDocument doc(512);
+  DeserializationError err = deserializeJson(doc, body);
+  if (err != DeserializationError::Ok) {
+    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+    return;
+  }
+
+  String ip = doc["ip"].as<String>();
+  int port = doc["port"] | 0;
+  int idType = doc["id_type"] | 1;
+  bool autoReconnect = doc["auto_reconnect"] | true;
+  bool enabled = doc["enabled"] | false;
+
+  ip.trim();
+  if (ip.length() == 0) {
+    server.send(400, "application/json", "{\"error\":\"IP server is required\"}");
+    return;
+  }
+  if (port < 1 || port > 65535) {
+    server.send(400, "application/json", "{\"error\":\"Port must be 1..65535\"}");
+    return;
+  }
+  if (idType < 1 || idType > 255) {
+    server.send(400, "application/json", "{\"error\":\"id_type must be 1..255\"}");
+    return;
+  }
+
+  appServerIp = ip;
+  appServerPort = static_cast<uint16_t>(port);
+  appServerIdType = static_cast<uint8_t>(idType);
+  appServerAutoReconnect = autoReconnect;
+  appServerEnabled = enabled;
+  saveAppServerConfig();
+
+  DynamicJsonDocument resp(256);
+  resp["success"] = true;
+  resp["message"] = "App server config saved";
+  String out;
+  serializeJson(resp, out);
+  server.send(200, "application/json", out);
+}
+
+static void handleAppServerConnect() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+
+  // Optional payload to save and connect in one action.
+  String body = server.arg("plain");
+  if (body.length() > 0) {
+    DynamicJsonDocument doc(512);
+    DeserializationError err = deserializeJson(doc, body);
+    if (err == DeserializationError::Ok) {
+      String ip = doc["ip"].as<String>();
+      int port = doc["port"] | 0;
+      int idType = doc["id_type"] | 1;
+      bool autoReconnect = doc["auto_reconnect"] | true;
+
+      ip.trim();
+      if (ip.length() > 0) appServerIp = ip;
+      if (port >= 1 && port <= 65535) appServerPort = static_cast<uint16_t>(port);
+      if (idType >= 1 && idType <= 255) appServerIdType = static_cast<uint8_t>(idType);
+      appServerAutoReconnect = autoReconnect;
+    }
+  }
+
+  appServerEnabled = true;
+  saveAppServerConfig();
+  bool ok = appServerConnectNow();
+
+  DynamicJsonDocument resp(384);
+  resp["success"] = ok;
+  resp["connected"] = appServerClient.connected();
+  resp["message"] = ok ? "Connected to app server" : "Connect failed";
+  resp["error"] = appServerLastError;
+  String out;
+  serializeJson(resp, out);
+  server.send(ok ? 200 : 500, "application/json", out);
+}
+
+static void handleAppServerDisconnect() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  appServerEnabled = false;
+  appServerDisconnect();
+  saveAppServerConfig();
+
+  DynamicJsonDocument resp(256);
+  resp["success"] = true;
+  resp["connected"] = false;
+  resp["message"] = "Disconnected";
+  String out;
+  serializeJson(resp, out);
+  server.send(200, "application/json", out);
+}
+
+static void handleAppServerStatus() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Cache-Control", "no-cache");
+
+  DynamicJsonDocument doc(512);
+  doc["connected"] = appServerClient.connected();
+  doc["ip"] = appServerIp;
+  doc["port"] = appServerPort;
+  doc["id_type"] = appServerIdType;
+  doc["auto_reconnect"] = appServerAutoReconnect;
+  doc["enabled"] = appServerEnabled;
+  doc["last_error"] = appServerLastError;
+  doc["last_connect_attempt_ms"] = appServerLastConnectAttemptMs;
+  doc["last_connected_at_ms"] = appServerLastConnectedAtMs;
+  doc["last_rx_at_ms"] = appServerLastRxAtMs;
+
+  String out;
+  serializeJson(doc, out);
+  server.send(200, "application/json", out);
 }
 
 static void sendDefaultLedConfig() {
@@ -631,6 +882,8 @@ static void handleApiOptions() {
 }
 
 void webServerInit() {
+  loadAppServerConfig();
+
   server.on("/", HTTP_GET, handleRoot);
 
   server.serveStatic("/style.css", LittleFS, "/style.css");
@@ -643,6 +896,16 @@ void webServerInit() {
   server.on("/api/wifi/connect", HTTP_POST, handleWifiConnect);
   server.on("/api/lan", HTTP_GET, handleLanGet);
   server.on("/api/lan", HTTP_POST, handleLanPost);
+
+  // ── App Server TCP ──
+  server.on("/api/app-server/config", HTTP_OPTIONS, handleApiOptions);
+  server.on("/api/app-server/config", HTTP_GET, handleAppServerConfigGet);
+  server.on("/api/app-server/config", HTTP_POST, handleAppServerConfigPost);
+  server.on("/api/app-server/connect", HTTP_OPTIONS, handleApiOptions);
+  server.on("/api/app-server/connect", HTTP_POST, handleAppServerConnect);
+  server.on("/api/app-server/disconnect", HTTP_OPTIONS, handleApiOptions);
+  server.on("/api/app-server/disconnect", HTTP_POST, handleAppServerDisconnect);
+  server.on("/api/app-server/status", HTTP_GET, handleAppServerStatus);
 
   // Ignore stray probing requests (e.g. browser extensions / tooling)
   server.on("/chat", HTTP_ANY, []() {
@@ -669,6 +932,11 @@ void webServerInit() {
   Serial.println("WebServer started");
   Serial.println("API endpoints:");
   Serial.println("  GET  /api/wifi/config");
+  Serial.println("  GET  /api/app-server/config");
+  Serial.println("  POST /api/app-server/config");
+  Serial.println("  POST /api/app-server/connect");
+  Serial.println("  POST /api/app-server/disconnect");
+  Serial.println("  GET  /api/app-server/status");
   Serial.println("  GET  /api/led/config");
   Serial.println("  POST /api/led/config");
   Serial.println("  POST /api/barrier/control");
@@ -679,4 +947,5 @@ void webServerInit() {
 
 void webServerHandleClient() {
   server.handleClient();
+  appServerLoop();
 }
