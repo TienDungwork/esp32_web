@@ -129,6 +129,17 @@ void barrierControl(BarrierState state) {
   }
 }
 
+void barrierDeactivate() {
+  if (barrierPulseActive && barrierPulsePin >= 0) {
+    digitalWrite(barrierPulsePin, LOW);
+  }
+  barrierPulseActive = false;
+  barrierPulsePin = -1;
+  setAllBarrierRelaysLow();
+  currentBarrierState = BARRIER_PAUSE;
+  Serial.println("[DevCtrl] Barrier deactivated");
+}
+
 BarrierState getBarrierState() {
   return currentBarrierState;
 }
@@ -179,6 +190,10 @@ void trafficLightControl(TrafficLightState state) {
       Serial.println("[DevCtrl] Traffic: RED_FLASH");
       break;
   }
+}
+
+void trafficLightDeactivate() {
+  trafficLightControl(TRAFFIC_OFF);
 }
 
 TrafficLightState getTrafficLightState() {

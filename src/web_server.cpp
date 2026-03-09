@@ -26,6 +26,40 @@ static unsigned long appServerLastConnectedAtMs = 0;
 static unsigned long appServerLastRxAtMs = 0;
 static String appServerLastError = "";
 
+enum class DeviceControlMode : uint8_t {
+  NONE = 0,
+  BARRIER = 1,
+  TRAFFIC = 2
+};
+
+static DeviceControlMode activeDeviceControlMode = DeviceControlMode::NONE;
+
+static const char* controlModeToStr(DeviceControlMode mode) {
+  switch (mode) {
+    case DeviceControlMode::BARRIER: return "barrier";
+    case DeviceControlMode::TRAFFIC: return "traffic";
+    case DeviceControlMode::NONE:
+    default: return "none";
+  }
+}
+
+static void switchDeviceControlMode(DeviceControlMode mode) {
+  if (mode == activeDeviceControlMode) return;
+
+  if (mode == DeviceControlMode::BARRIER) {
+    trafficLightDeactivate();
+  } else if (mode == DeviceControlMode::TRAFFIC) {
+    barrierDeactivate();
+  } else {
+    barrierDeactivate();
+    trafficLightDeactivate();
+  }
+
+  activeDeviceControlMode = mode;
+  Serial.print("[DevCtrl] Active mode switched to: ");
+  Serial.println(controlModeToStr(activeDeviceControlMode));
+}
+
 #ifndef APP_FIRMWARE_VERSION
   #define APP_FIRMWARE_VERSION "dev"
 #endif
@@ -716,6 +750,7 @@ static void handleBarrierControl() {
     return;
   }
 
+  switchDeviceControlMode(DeviceControlMode::BARRIER);
   barrierControl(state);
 
   DynamicJsonDocument resp(128);
@@ -757,11 +792,50 @@ static void handleTrafficLight() {
     return;
   }
 
+  switchDeviceControlMode(DeviceControlMode::TRAFFIC);
   trafficLightControl(state);
 
   DynamicJsonDocument resp(128);
   resp["success"] = true;
   resp["state"] = stateStr;
+  String out;
+  serializeJson(resp, out);
+  server.send(200, "application/json", out);
+}
+
+static void handleControlModePost() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+
+  String body = server.arg("plain");
+  if (body.length() == 0) {
+    server.send(400, "application/json", "{\"error\":\"No data provided\"}");
+    return;
+  }
+
+  DynamicJsonDocument doc(256);
+  if (deserializeJson(doc, body) != DeserializationError::Ok) {
+    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+    return;
+  }
+
+  String modeStr = doc["mode"].as<String>();
+  modeStr.toLowerCase();
+
+  if (modeStr == "barrier") {
+    switchDeviceControlMode(DeviceControlMode::BARRIER);
+  } else if (modeStr == "traffic") {
+    switchDeviceControlMode(DeviceControlMode::TRAFFIC);
+  } else if (modeStr == "none") {
+    switchDeviceControlMode(DeviceControlMode::NONE);
+  } else {
+    server.send(400, "application/json", "{\"error\":\"Invalid mode. Use: barrier, traffic, none\"}");
+    return;
+  }
+
+  DynamicJsonDocument resp(192);
+  resp["success"] = true;
+  resp["active_control_mode"] = controlModeToStr(activeDeviceControlMode);
+  resp["message"] = "Control mode switched";
   String out;
   serializeJson(resp, out);
   server.send(200, "application/json", out);
@@ -850,6 +924,7 @@ static void handleDeviceStatus() {
   DynamicJsonDocument doc(1024);
   doc["barrier"] = barrierStateToStr(getBarrierState());
   doc["traffic_light"] = trafficStateToStr(getTrafficLightState());
+  doc["active_control_mode"] = controlModeToStr(activeDeviceControlMode);
   // Keep legacy key for existing UI compatibility
   doc["beam"] = readBeamPwm1();
 
@@ -922,6 +997,8 @@ void webServerInit() {
   server.on("/api/barrier/control",       HTTP_POST,    handleBarrierControl);
   server.on("/api/traffic-light/control", HTTP_OPTIONS, handleApiOptions);
   server.on("/api/traffic-light/control", HTTP_POST,    handleTrafficLight);
+  server.on("/api/device/control-mode",   HTTP_OPTIONS, handleApiOptions);
+  server.on("/api/device/control-mode",   HTTP_POST,    handleControlModePost);
   server.on("/api/ota/update",            HTTP_OPTIONS, handleApiOptions);
   server.on("/api/ota/update",            HTTP_POST,    handleOtaUpdate);
   server.on("/api/device/status",         HTTP_GET,     handleDeviceStatus);
@@ -941,6 +1018,7 @@ void webServerInit() {
   Serial.println("  POST /api/led/config");
   Serial.println("  POST /api/barrier/control");
   Serial.println("  POST /api/traffic-light/control");
+  Serial.println("  POST /api/device/control-mode");
   Serial.println("  POST /api/ota/update");
   Serial.println("  GET  /api/device/status");
 }

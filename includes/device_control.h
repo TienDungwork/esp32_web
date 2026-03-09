@@ -40,9 +40,11 @@ void deviceControlInit();
 void deviceControlLoop();
 
 void barrierControl(BarrierState state);
+void barrierDeactivate();
 BarrierState getBarrierState();
 
 void trafficLightControl(TrafficLightState state);
+void trafficLightDeactivate();
 TrafficLightState getTrafficLightState();
 
 // Gọi trong loop() để xử lý chế độ nhấp nháy đèn đỏ

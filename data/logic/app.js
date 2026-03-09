@@ -328,6 +328,39 @@
       document.querySelectorAll('.feature-panel').forEach(p => p.classList.remove('active'));
       const panel = document.getElementById('panel-' + featureId);
       if (panel) panel.classList.add('active');
+
+      if (featureId === 'barrier' || featureId === 'traffic') {
+        switchExclusiveDeviceControlMode(featureId);
+      }
+    }
+
+    async function switchExclusiveDeviceControlMode(featureId) {
+      const mode = featureId === 'barrier' ? 'barrier' : (featureId === 'traffic' ? 'traffic' : 'none');
+      if (mode === 'none') return;
+
+      try {
+        const res = await fetch('/api/device/control-mode', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'switch mode failed');
+
+        if (mode === 'barrier') {
+          const trafficMsgEl = document.getElementById('trafficMessage');
+          if (trafficMsgEl) trafficMsgEl.textContent = 'Đã ngắt đèn giao thông để chuyển sang chế độ Barrier.';
+        }
+        if (mode === 'traffic') {
+          const barrierMsgEl = document.getElementById('barrierMessage');
+          const barrierStatusEl = document.getElementById('barrierStatus');
+          if (barrierMsgEl) barrierMsgEl.textContent = 'Đã ngắt Barrier để chuyển sang chế độ đèn giao thông.';
+          if (barrierStatusEl) barrierStatusEl.textContent = 'Đã ngắt do chuyển mode';
+        }
+
+        refreshSensors(false);
+      } catch (_) {
+        // Keep UX silent here because user may still control directly via action buttons.
+      }
     }
 
     /* ══════════════════════════════════════════════════ */
@@ -442,6 +475,36 @@
       } catch (e) { msgEl.textContent = 'Không gửi được lệnh.'; }
     }
 
+    function syncBarrierAndTrafficState(data) {
+      if (!data || typeof data !== 'object') return;
+
+      const barrierLabelMap = {
+        open: 'Barie đang mở',
+        close: 'Barie đang đóng',
+        stop: 'Barie đang dừng'
+      };
+      const barrierState = String(data.barrier || '').toLowerCase();
+      const barrierStatusEl = document.getElementById('barrierStatus');
+      if (barrierStatusEl && barrierLabelMap[barrierState]) {
+        barrierStatusEl.textContent = barrierLabelMap[barrierState];
+      }
+
+      const trafficState = String(data.traffic_light || '').toLowerCase();
+      if (trafficState === 'green' || trafficState === 'red' || trafficState === 'yellow') {
+        const trafficRadio = document.querySelector(`input[name="trafficState"][value="${trafficState}"]`);
+        if (trafficRadio) trafficRadio.checked = true;
+      }
+
+      const trafficMsgEl = document.getElementById('trafficMessage');
+      if (trafficMsgEl) {
+        if (trafficState === 'red_flash') {
+          trafficMsgEl.textContent = 'Đèn đỏ đang nhấp nháy';
+        } else if (trafficState === 'off') {
+          trafficMsgEl.textContent = 'Đèn giao thông đang tắt';
+        }
+      }
+    }
+
     /* ══════════════════════════════════════════════════ */
     /*          FEATURE: BEAM / SENSOR                   */
     /* ══════════════════════════════════════════════════ */
@@ -451,6 +514,8 @@
       try {
         const res = await fetch('/api/device/status');
         const data = await res.json();
+
+        syncBarrierAndTrafficState(data);
 
         const updateBeamStatus = (elId, rawValue) => {
           const el = document.getElementById(elId);
