@@ -186,14 +186,18 @@ static void generateEthernetMAC() {
   eth_mac[5] = wifiMac[5] ^ 0x02;
 }
 
+bool g_apEnabled = false;
+
 static bool startAp() {
   Serial.println("Starting WiFi AP mode...");
-  // Keep AP available even when STA is used later, so web UI remains reachable.
+  // Start in AP+STA to allow initial provisioning.
   WiFi.mode(WIFI_AP_STA);
   if (!WiFi.softAP(AP_SSID, AP_PASSWORD)) {
     Serial.println("Failed to start AP");
+    g_apEnabled = false;
     return false;
   }
+  g_apEnabled = true;
   currentNetworkMode = NetworkMode::WIFI_AP_MODE;
   Serial.print("AP SSID: ");
   Serial.println(AP_SSID);
@@ -268,6 +272,15 @@ static bool startWifiStaFromConfig() {
   if (WiFi.status() == WL_CONNECTED) {
     wifiConnected = true;
     currentNetworkMode = NetworkMode::WIFI_STA_MODE;
+
+    // STA is stable now: disable AP so device no longer broadcasts AP SSID.
+    if (g_apEnabled) {
+      WiFi.softAPdisconnect(true);
+      WiFi.mode(WIFI_STA);
+      g_apEnabled = false;
+      Serial.println("WiFi AP disabled after STA connected");
+    }
+
     Serial.println("WiFi STA connected");
     Serial.println("Web: http://" + WiFi.localIP().toString());
     return true;

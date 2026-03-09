@@ -81,6 +81,8 @@ void deviceControlLoop() {
     }
     barrierPulseActive = false;
     barrierPulsePin = -1;
+    // Barrier is momentary: after pulse completes, return to idle state.
+    currentBarrierState = BARRIER_PAUSE;
   }
 
   const int btnOpenNow = digitalRead(BTN_OPEN_PIN);

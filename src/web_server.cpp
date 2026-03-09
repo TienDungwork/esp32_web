@@ -408,7 +408,9 @@ static void handleNetworkStatus() {
   doc["ip"] = networkGetCurrentIp().toString();
   doc["ethernet_connected"] = ethernetConnected;
   doc["wifi_connected"] = wifiConnected;
-  doc["ap_ssid"] = networkGetApSsid();
+  doc["ap_ssid"] = (WiFi.getMode() == WIFI_AP || WiFi.getMode() == WIFI_AP_STA)
+                   ? networkGetApSsid()
+                   : "";
 
   // Firmware metadata for showing current version before OTA.
   doc["firmware_version"] = APP_FIRMWARE_VERSION;
@@ -529,7 +531,7 @@ static void handleWifiConnect() {
   delay(100);
   Serial.println("Attempting WiFi connection to: " + ssid);
 
-  // Keep AP alive so client can continue using web UI after sending config.
+  // Start from AP+STA for provisioning connect flow.
   WiFi.mode(WIFI_AP_STA);
   if (wifi_use_static_ip) {
     if (!WiFi.config(wifi_static_ip, wifi_gateway, wifi_subnet, wifi_dns1, wifi_dns2)) {
@@ -551,6 +553,11 @@ static void handleWifiConnect() {
   if (connected) {
     wifiConnected = true;
     currentNetworkMode = NetworkMode::WIFI_STA_MODE;
+
+    // Connection succeeded: stop AP and keep STA only.
+    WiFi.softAPdisconnect(true);
+    WiFi.mode(WIFI_STA);
+
     Serial.println("WiFi connected successfully!");
     Serial.print("IP: ");
     Serial.println(WiFi.localIP());
