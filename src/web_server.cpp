@@ -885,22 +885,12 @@ static void handleWifiConnect() {
 
   // Start from AP+STA for provisioning connect flow.
   WiFi.mode(WIFI_AP_STA);
-  WiFi.setSleep(false);
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
-
-  // Always reset previous STA state so reconnecting with same/new SSID is clean.
-  WiFi.disconnect(false, true);
-  delay(150);
 
   if (wifi_use_static_ip) {
     if (!WiFi.config(wifi_static_ip, wifi_gateway, wifi_subnet, wifi_dns1, wifi_dns2)) {
       Serial.println("Failed to configure static IP");
-    }
-  } else {
-    const IPAddress zeroIp(0, 0, 0, 0);
-    if (!WiFi.config(zeroIp, zeroIp, zeroIp, zeroIp, zeroIp)) {
-      Serial.println("Failed to set DHCP mode");
     }
   }
 
@@ -923,6 +913,11 @@ static void handleWifiConnect() {
   }
 
   if (connected) {
+    unsigned long ipWaitStart = millis();
+    while (WiFi.localIP() == INADDR_NONE && (millis() - ipWaitStart) < 4000) {
+      delay(100);
+    }
+
     wifiConnected = true;
     currentNetworkMode = NetworkMode::WIFI_STA_MODE;
 
