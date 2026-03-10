@@ -25,6 +25,10 @@
         <i class="fas fa-cog"></i>
         <span>Cấu hình</span>
       </button>
+      <button class="tab-btn" data-tab="server" onclick="showTab('server')">
+        <i class="fas fa-server"></i>
+        <span>Kết nối Server</span>
+      </button>
       <button class="tab-btn" data-tab="features" onclick="showTab('features')">
         <i class="fas fa-th-large"></i>
         <span>Chức năng</span>
@@ -167,16 +171,39 @@
           </div>
         </div>
 
-        <!-- Cài đặt kết nối Server App -->
-        <div class="collapsible-header" onclick="toggleCollapse(this)">
-          <h2><i class="fas fa-server"></i> Cài đặt chung - Server App</h2>
-          <i class="fas fa-chevron-down chevron"></i>
-        </div>
-        <div class="collapsible-body">
-          <div class="collapsible-body-inner">
-            <div class="status-row">
+      </div>
+
+      <!-- ═══════════ TAB KẾT NỐI SERVER ═══════════ -->
+      <div class="tab-pane" id="server">
+        <div class="server-tab-card">
+          <div class="server-tab-header">
+            <h2><i class="fas fa-server"></i> Kết nối Server App</h2>
+          </div>
+
+          <div class="server-tab-body">
+            <div class="server-status-banner" id="serverStatusBanner">
+              <span class="status-dot-server"></span>
               <span class="status-label">Trạng thái kết nối:</span>
               <span class="status-value" id="appServerConnState">Chưa kiểm tra</span>
+            </div>
+
+            <div class="device-type-card">
+              <h3>Bảng thiết bị (tự gán ID Type)</h3>
+              <p class="device-type-subtitle">Chọn thiết bị để tự động gán <b>ID Type</b> và <b>Connect Request
+                  Code</b>.</p>
+              <div class="device-type-table-wrap">
+                <table class="device-type-table" id="deviceTypeTable">
+                  <thead>
+                    <tr>
+                      <th>Tên thiết bị</th>
+                      <th>Mã</th>
+                      <th>Trạng thái</th>
+                      <th>Chọn</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
             </div>
 
             <div class="form-row">
@@ -192,16 +219,20 @@
                 <label>ID Type:</label>
                 <input type="number" id="appServerIdType" placeholder="1" min="1" max="255">
               </div>
+              <div class="form-group">
+                <label>Request Code:</label>
+                <input type="number" id="appServerConnectRequestCode" placeholder="1" min="1" max="1000000">
+              </div>
             </div>
 
-            <div class="form-group checkbox-group">
+            <div class="form-group checkbox-group" style="margin-bottom:6px">
               <label>
                 <input type="checkbox" id="appServerAutoReconnect" checked>
                 Tự động kết nối lại khi mất kết nối
               </label>
             </div>
 
-            <div class="form-actions">
+            <div class="server-actions-grid">
               <button class="btn btn-primary" onclick="loadAppServerConfig()">
                 <i class="fas fa-download"></i> Tải cấu hình
               </button>
@@ -209,20 +240,22 @@
                 <i class="fas fa-save"></i> Lưu cấu hình
               </button>
               <button class="btn btn-success" onclick="connectAppServer()">
-                <i class="fas fa-plug"></i> Kết nối server
+                <i class="fas fa-plug"></i> Kết nối
               </button>
               <button class="btn btn-danger" onclick="disconnectAppServer()">
                 <i class="fas fa-unlink"></i> Ngắt kết nối
               </button>
+              <button class="btn btn-primary" onclick="sendConnectRequestPacket()">
+                <i class="fas fa-paper-plane"></i> Gửi yêu cầu
+              </button>
               <button class="btn btn-secondary" onclick="refreshAppServerStatus()">
-                <i class="fas fa-sync-alt"></i> Làm mới trạng thái
+                <i class="fas fa-sync-alt"></i> Làm mới
               </button>
             </div>
 
             <p class="hint" id="appServerMessage"></p>
           </div>
         </div>
-
       </div>
 
       <!-- ═══════════ TAB CHỨC NĂNG ═══════════ -->

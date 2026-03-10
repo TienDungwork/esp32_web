@@ -4,6 +4,7 @@
 #include <WebServer_ESP32_SC_W5500.hpp>
 #include <LittleFS.h>
 #include <ArduinoJson.h>
+#include <time.h>
 
 #include "network.h"
 #include "led_matrix.h"
@@ -19,12 +20,15 @@ static WiFiClient appServerClient;
 static String appServerIp = "";
 static uint16_t appServerPort = 0;
 static uint8_t appServerIdType = 1;
+static int appServerConnectRequestCode = 1;
+static int appServerSelectedDeviceCode = 1;
 static bool appServerAutoReconnect = true;
 static bool appServerEnabled = false;
 static unsigned long appServerLastConnectAttemptMs = 0;
 static unsigned long appServerLastConnectedAtMs = 0;
 static unsigned long appServerLastRxAtMs = 0;
 static String appServerLastError = "";
+static String appServerRxBuffer = "";
 
 enum class DeviceControlMode : uint8_t {
   NONE = 0,
@@ -72,10 +76,209 @@ static bool hasNetworkUplink() {
   return ethernetConnected || wifiConnected;
 }
 
+static bool isSupportedDeviceCode(int code) {
+  switch (code) {
+    case 1: case 2: case 3: case 4: case 5: case 6: case 7: case 8: case 9: case 10: case 11:
+    case 51: case 52: case 53: case 54: case 55: case 56: case 57: case 58: case 59: case 60: case 61:
+    case 101: case 102: case 103:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static void applySelectedDeviceCode(int code) {
+  if (!isSupportedDeviceCode(code)) return;
+  appServerSelectedDeviceCode = code;
+  appServerIdType = static_cast<uint8_t>(code);
+  appServerConnectRequestCode = code;
+}
+
+static String nowIso8601IfValid() {
+  time_t now = time(nullptr);
+  if (now < 1700000000) {
+    return "";
+  }
+
+  struct tm timeInfo;
+  gmtime_r(&now, &timeInfo);
+  char buf[25];
+  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &timeInfo);
+  return String(buf);
+}
+
+static bool writePacketToAppServer(int code,
+                                   const String& message,
+                                   bool includeStatus,
+                                   int status,
+                                   bool includeIndex,
+                                   int indexInPacket) {
+  if (!appServerClient.connected()) {
+    appServerLastError = "Socket is not connected";
+    return false;
+  }
+
+  DynamicJsonDocument doc(1024);
+  doc["Code"] = code;
+  doc["Message"] = message;
+  doc["DeviceType"] = static_cast<int>(appServerIdType);
+
+  if (includeStatus) {
+    doc["Status"] = status;
+  }
+
+  String createdAt = nowIso8601IfValid();
+  if (createdAt.length() > 0) {
+    doc["CreatedAt"] = createdAt;
+  }
+
+  if (includeIndex) {
+    doc["IndexInPacket"] = indexInPacket;
+  }
+
+  String out;
+  serializeJson(doc, out);
+  out += "\n";
+
+  size_t written = appServerClient.print(out);
+  if (written != out.length()) {
+    appServerLastError = "Write packet failed";
+    return false;
+  }
+
+  return true;
+}
+
+static bool applyLedConfigDoc(DynamicJsonDocument& srcDoc, String* errorMessage = nullptr) {
+  int boardCount = srcDoc["boardCount"] | 1;
+  int lineSpacing = srcDoc["lineSpacing"] | -1;
+
+  String lines[5] = {"", "", "", "", ""};
+  float fontSizes[5] = {1.6f, 1.6f, 1.6f, 1.6f, 1.6f};
+  uint16_t colors[5] = {
+    LED_COLOR_GREEN,
+    LED_COLOR_GREEN,
+    LED_COLOR_GREEN,
+    LED_COLOR_GREEN,
+    LED_COLOR_GREEN
+  };
+
+  auto normalizeFontSize = [](float value) {
+    if (value <= 0.0f) return 1.6f;
+    if (value > 8.0f) return value / 10.0f;
+    return value;
+  };
+
+  JsonArray inputLines = srcDoc["lines"].as<JsonArray>();
+  for (JsonVariant item : inputLines) {
+    int lineNumber = item["line"] | 0;
+    if (lineNumber < 1 || lineNumber > 5) continue;
+
+    String fixed = item["fixed"] | "";
+    String text = item["text"] | "";
+    lines[lineNumber - 1] = fixed + text;
+    float receivedSize = item["fontSize"] | 1.6f;
+    fontSizes[lineNumber - 1] = normalizeFontSize(receivedSize);
+    String colorHex = item["color"] | "";
+    colors[lineNumber - 1] = ledMatrixParseColor(colorHex, LED_COLOR_GREEN);
+  }
+
+  if (boardCount < 1) boardCount = 1;
+  if (boardCount > ledMatrixGetMaxBoardCount()) boardCount = ledMatrixGetMaxBoardCount();
+
+  ledMatrixShowMultiLine(lines, fontSizes, colors, 5, boardCount, lineSpacing);
+
+  if (errorMessage) {
+    *errorMessage = "";
+  }
+  return true;
+}
+
+static bool handleLedScreenControlMessage(const String& message, String* errorMessage = nullptr) {
+  DynamicJsonDocument ledDoc(4096);
+  DeserializationError err = deserializeJson(ledDoc, message);
+  if (err != DeserializationError::Ok) {
+    // Fallback: message is plain text, show at center line.
+    ledMatrixShowCenterText(message, LED_COLOR_GREEN, 8);
+    if (errorMessage) {
+      *errorMessage = "";
+    }
+    return true;
+  }
+
+  if (ledDoc.containsKey("lines")) {
+    return applyLedConfigDoc(ledDoc, errorMessage);
+  }
+
+  String text = ledDoc["text"] | ledDoc["message"] | "";
+  if (text.length() == 0) {
+    if (errorMessage) {
+      *errorMessage = "Message JSON does not contain LED content";
+    }
+    return false;
+  }
+
+  String colorHex = ledDoc["color"] | "#00ff00";
+  uint16_t color = ledMatrixParseColor(colorHex, LED_COLOR_GREEN);
+  int boardCount = ledDoc["boardCount"] | 8;
+  if (boardCount < 1) boardCount = 1;
+  if (boardCount > ledMatrixGetMaxBoardCount()) boardCount = ledMatrixGetMaxBoardCount();
+  ledMatrixShowCenterText(text, color, boardCount);
+
+  if (errorMessage) {
+    *errorMessage = "";
+  }
+  return true;
+}
+
+static bool handleAppServerPacket(const String& packetJson, String* errorMessage = nullptr) {
+  DynamicJsonDocument packetDoc(6144);
+  DeserializationError err = deserializeJson(packetDoc, packetJson);
+  if (err != DeserializationError::Ok) {
+    if (errorMessage) {
+      *errorMessage = "Invalid packet JSON";
+    }
+    return false;
+  }
+
+  int code = packetDoc["Code"] | 0;
+  String message = packetDoc["Message"].as<String>();
+
+  if (code == 201) {
+    return handleLedScreenControlMessage(message, errorMessage);
+  }
+
+  if (errorMessage) {
+    *errorMessage = "Unsupported packet code";
+  }
+  return false;
+}
+
+static void sendConnectionRequestPacket() {
+  DynamicJsonDocument deviceInfo(768);
+  deviceInfo["model"] = "ESP32-S3";
+  deviceInfo["firmwareVersion"] = APP_FIRMWARE_VERSION;
+  deviceInfo["firmwareBuild"] = getFirmwareBuildStamp();
+  deviceInfo["networkMode"] = networkGetModeString();
+  deviceInfo["ip"] = networkGetCurrentIp().toString();
+  deviceInfo["mac"] = WiFi.macAddress();
+
+  String message;
+  serializeJson(deviceInfo, message);
+  if (!writePacketToAppServer(appServerConnectRequestCode, message, false, 0, false, 0)) {
+    Serial.println("[AppServer] Failed to send connection request packet");
+    return;
+  }
+
+  Serial.println("[AppServer] Sent connection request packet (Code=" + String(appServerConnectRequestCode) + ")");
+}
+
 static void loadAppServerConfig() {
   appServerIp = "";
   appServerPort = 0;
   appServerIdType = 1;
+  appServerConnectRequestCode = 1;
+  appServerSelectedDeviceCode = 1;
   appServerAutoReconnect = true;
   appServerEnabled = false;
 
@@ -91,11 +294,22 @@ static void loadAppServerConfig() {
 
   appServerIp = doc["ip"].as<String>();
   appServerPort = static_cast<uint16_t>(doc["port"] | 0);
-  appServerIdType = static_cast<uint8_t>(doc["id_type"] | 1);
+  int selectedCode = doc["selected_device_code"] | 0;
+  if (isSupportedDeviceCode(selectedCode)) {
+    applySelectedDeviceCode(selectedCode);
+  } else {
+    int idType = doc["id_type"] | 1;
+    int connectRequestCode = doc["connect_request_code"] | 1;
+
+    if (idType < 1 || idType > 255) idType = 1;
+    if (connectRequestCode < 1 || connectRequestCode > 1000000) connectRequestCode = idType;
+
+    appServerIdType = static_cast<uint8_t>(idType);
+    appServerConnectRequestCode = connectRequestCode;
+    appServerSelectedDeviceCode = idType;
+  }
   appServerAutoReconnect = doc["auto_reconnect"] | true;
   appServerEnabled = doc["enabled"] | false;
-
-  if (appServerIdType < 1 || appServerIdType > 255) appServerIdType = 1;
 }
 
 static void saveAppServerConfig() {
@@ -103,6 +317,8 @@ static void saveAppServerConfig() {
   doc["ip"] = appServerIp;
   doc["port"] = appServerPort;
   doc["id_type"] = appServerIdType;
+  doc["connect_request_code"] = appServerConnectRequestCode;
+  doc["selected_device_code"] = appServerSelectedDeviceCode;
   doc["auto_reconnect"] = appServerAutoReconnect;
   doc["enabled"] = appServerEnabled;
 
@@ -141,7 +357,9 @@ static bool appServerConnectNow() {
   }
 
   appServerLastConnectedAtMs = millis();
+  appServerRxBuffer = "";
   appServerLastError = "";
+  sendConnectionRequestPacket();
   return true;
 }
 
@@ -154,8 +372,40 @@ static void appServerDisconnect() {
 static void appServerLoop() {
   if (appServerClient.connected()) {
     while (appServerClient.available() > 0) {
-      appServerClient.read();
+      char ch = static_cast<char>(appServerClient.read());
+      appServerRxBuffer += ch;
       appServerLastRxAtMs = millis();
+
+      if (appServerRxBuffer.length() > 8192) {
+        appServerRxBuffer = "";
+        appServerLastError = "RX buffer overflow";
+      }
+    }
+
+    int newLineIdx = appServerRxBuffer.indexOf('\n');
+    while (newLineIdx >= 0) {
+      String packet = appServerRxBuffer.substring(0, newLineIdx);
+      appServerRxBuffer.remove(0, newLineIdx + 1);
+      packet.trim();
+
+      if (packet.length() > 0) {
+        String err;
+        bool handled = handleAppServerPacket(packet, &err);
+        if (!handled && err.length() > 0) {
+          appServerLastError = err;
+          Serial.println("[AppServer] RX packet handling failed: " + err);
+        }
+      }
+
+      newLineIdx = appServerRxBuffer.indexOf('\n');
+    }
+
+    if (appServerRxBuffer.length() > 1 && appServerRxBuffer[0] == '{' && appServerRxBuffer[appServerRxBuffer.length() - 1] == '}') {
+      String packet = appServerRxBuffer;
+      String err;
+      if (handleAppServerPacket(packet, &err)) {
+        appServerRxBuffer = "";
+      }
     }
     return;
   }
@@ -176,6 +426,8 @@ static void handleAppServerConfigGet() {
   doc["ip"] = appServerIp;
   doc["port"] = appServerPort;
   doc["id_type"] = appServerIdType;
+  doc["connect_request_code"] = appServerConnectRequestCode;
+  doc["selected_device_code"] = appServerSelectedDeviceCode;
   doc["auto_reconnect"] = appServerAutoReconnect;
   doc["enabled"] = appServerEnabled;
 
@@ -203,6 +455,8 @@ static void handleAppServerConfigPost() {
   String ip = doc["ip"].as<String>();
   int port = doc["port"] | 0;
   int idType = doc["id_type"] | 1;
+  int connectRequestCode = doc["connect_request_code"] | 1;
+  int selectedDeviceCode = doc["selected_device_code"] | 0;
   bool autoReconnect = doc["auto_reconnect"] | true;
   bool enabled = doc["enabled"] | false;
 
@@ -219,10 +473,20 @@ static void handleAppServerConfigPost() {
     server.send(400, "application/json", "{\"error\":\"id_type must be 1..255\"}");
     return;
   }
+  if (connectRequestCode < 1 || connectRequestCode > 1000000) {
+    server.send(400, "application/json", "{\"error\":\"connect_request_code must be 1..1000000\"}");
+    return;
+  }
 
   appServerIp = ip;
   appServerPort = static_cast<uint16_t>(port);
-  appServerIdType = static_cast<uint8_t>(idType);
+  if (isSupportedDeviceCode(selectedDeviceCode)) {
+    applySelectedDeviceCode(selectedDeviceCode);
+  } else {
+    appServerIdType = static_cast<uint8_t>(idType);
+    appServerConnectRequestCode = connectRequestCode;
+    appServerSelectedDeviceCode = idType;
+  }
   appServerAutoReconnect = autoReconnect;
   appServerEnabled = enabled;
   saveAppServerConfig();
@@ -247,12 +511,22 @@ static void handleAppServerConnect() {
       String ip = doc["ip"].as<String>();
       int port = doc["port"] | 0;
       int idType = doc["id_type"] | 1;
+      int connectRequestCode = doc["connect_request_code"] | 1;
+      int selectedDeviceCode = doc["selected_device_code"] | 0;
       bool autoReconnect = doc["auto_reconnect"] | true;
 
       ip.trim();
       if (ip.length() > 0) appServerIp = ip;
       if (port >= 1 && port <= 65535) appServerPort = static_cast<uint16_t>(port);
-      if (idType >= 1 && idType <= 255) appServerIdType = static_cast<uint8_t>(idType);
+      if (isSupportedDeviceCode(selectedDeviceCode)) {
+        applySelectedDeviceCode(selectedDeviceCode);
+      } else {
+        if (idType >= 1 && idType <= 255) {
+          appServerIdType = static_cast<uint8_t>(idType);
+          appServerSelectedDeviceCode = idType;
+        }
+        if (connectRequestCode >= 1 && connectRequestCode <= 1000000) appServerConnectRequestCode = connectRequestCode;
+      }
       appServerAutoReconnect = autoReconnect;
     }
   }
@@ -286,6 +560,41 @@ static void handleAppServerDisconnect() {
   server.send(200, "application/json", out);
 }
 
+static void handleAppServerSendConnectRequest() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+
+  if (!appServerClient.connected()) {
+    server.send(409, "application/json", "{\"success\":false,\"error\":\"Socket is not connected\"}");
+    return;
+  }
+
+  String body = server.arg("plain");
+  if (body.length() > 0) {
+    DynamicJsonDocument doc(256);
+    if (deserializeJson(doc, body) == DeserializationError::Ok) {
+      int code = doc["connect_request_code"] | appServerConnectRequestCode;
+      int selectedDeviceCode = doc["selected_device_code"] | appServerSelectedDeviceCode;
+
+      if (isSupportedDeviceCode(selectedDeviceCode)) {
+        applySelectedDeviceCode(selectedDeviceCode);
+      }
+      if (code >= 1 && code <= 1000000) {
+        appServerConnectRequestCode = code;
+      }
+    }
+  }
+
+  sendConnectionRequestPacket();
+
+  DynamicJsonDocument resp(256);
+  resp["success"] = true;
+  resp["message"] = "Connection request packet sent";
+  resp["connect_request_code"] = appServerConnectRequestCode;
+  String out;
+  serializeJson(resp, out);
+  server.send(200, "application/json", out);
+}
+
 static void handleAppServerStatus() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.sendHeader("Cache-Control", "no-cache");
@@ -295,6 +604,8 @@ static void handleAppServerStatus() {
   doc["ip"] = appServerIp;
   doc["port"] = appServerPort;
   doc["id_type"] = appServerIdType;
+  doc["connect_request_code"] = appServerConnectRequestCode;
+  doc["selected_device_code"] = appServerSelectedDeviceCode;
   doc["auto_reconnect"] = appServerAutoReconnect;
   doc["enabled"] = appServerEnabled;
   doc["last_error"] = appServerLastError;
@@ -675,40 +986,11 @@ static void handleLedConfig() {
     return;
   }
 
-  int boardCount = doc["boardCount"] | 1;
-  int lineSpacing = doc["lineSpacing"] | -1;
-
-  String lines[5] = {"", "", "", "", ""};
-  float fontSizes[5] = {1.6f, 1.6f, 1.6f, 1.6f, 1.6f};
-  uint16_t colors[5] = {
-    LED_COLOR_GREEN,
-    LED_COLOR_GREEN,
-    LED_COLOR_GREEN,
-    LED_COLOR_GREEN,
-    LED_COLOR_GREEN
-  };
-
-  auto normalizeFontSize = [](float value) {
-    if (value <= 0.0f) return 1.6f;
-    if (value > 8.0f) return value / 10.0f;
-    return value;
-  };
-
-  JsonArray inputLines = doc["lines"].as<JsonArray>();
-  for (JsonVariant item : inputLines) {
-    int lineNumber = item["line"] | 0;
-    if (lineNumber < 1 || lineNumber > 5) continue;
-
-    String fixed = item["fixed"] | "";
-    String text = item["text"] | "";
-    lines[lineNumber - 1] = fixed + text;
-    float receivedSize = item["fontSize"] | 1.6f;
-    fontSizes[lineNumber - 1] = normalizeFontSize(receivedSize);
-    String colorHex = item["color"] | "";
-    colors[lineNumber - 1] = ledMatrixParseColor(colorHex, LED_COLOR_GREEN);
+  String applyErr;
+  if (!applyLedConfigDoc(doc, &applyErr)) {
+    server.send(400, "application/json", "{\"error\":\"Invalid LED content\"}");
+    return;
   }
-
-  ledMatrixShowMultiLine(lines, fontSizes, colors, 5, boardCount, lineSpacing);
 
   File file = LittleFS.open(LED_CONFIG_FILE, "w");
   if (file) {
@@ -987,6 +1269,8 @@ void webServerInit() {
   server.on("/api/app-server/connect", HTTP_POST, handleAppServerConnect);
   server.on("/api/app-server/disconnect", HTTP_OPTIONS, handleApiOptions);
   server.on("/api/app-server/disconnect", HTTP_POST, handleAppServerDisconnect);
+  server.on("/api/app-server/send-connect-request", HTTP_OPTIONS, handleApiOptions);
+  server.on("/api/app-server/send-connect-request", HTTP_POST, handleAppServerSendConnectRequest);
   server.on("/api/app-server/status", HTTP_GET, handleAppServerStatus);
 
   // Ignore stray probing requests (e.g. browser extensions / tooling)
@@ -1020,6 +1304,7 @@ void webServerInit() {
   Serial.println("  POST /api/app-server/config");
   Serial.println("  POST /api/app-server/connect");
   Serial.println("  POST /api/app-server/disconnect");
+  Serial.println("  POST /api/app-server/send-connect-request");
   Serial.println("  GET  /api/app-server/status");
   Serial.println("  GET  /api/led/config");
   Serial.println("  POST /api/led/config");

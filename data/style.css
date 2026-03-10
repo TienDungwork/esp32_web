@@ -30,48 +30,204 @@ body {
   font-size: 0.95em;
 }
 
-.fa-microchip::before { content: "▦"; }
-.fa-cog::before { content: "⚙"; }
-.fa-th-large::before { content: "▥"; }
-.fa-signal::before { content: "▤"; }
-.fa-chevron-down::before { content: "▾"; }
-.fa-sync-alt::before { content: "↻"; }
-.fa-wifi::before { content: "⌁"; }
-.fa-search::before { content: "⌕"; }
-.fa-link::before { content: "⛓"; }
-.fa-network-wired::before { content: "≋"; }
-.fa-download::before { content: "⇩"; }
-.fa-save::before { content: "⎘"; }
-.fa-tv::before { content: "▭"; }
-.fa-road-barrier::before { content: "⊟"; }
-.fa-traffic-light::before { content: "◎"; }
-.fa-volume-up::before { content: "))"; font-size: 0.72em; letter-spacing: -0.08em; }
-.fa-print::before { content: "⎙"; }
-.fa-weight-hanging::before { content: "⌖"; }
-.fa-broadcast-tower::before { content: "◍"; }
-.fa-cloud-upload-alt::before { content: "☁"; }
-.fa-paper-plane::before { content: "➤"; }
-.fa-door-open::before { content: "↗"; }
-.fa-door-closed::before { content: "□"; }
-.fa-stop-circle::before { content: "◼"; }
-.fa-pause-circle::before { content: "⏸"; }
-.fa-check::before { content: "✓"; }
-.fa-eraser::before { content: "⌫"; }
-.fa-play::before { content: "▶"; }
-.fa-satellite-dish::before { content: "◎"; }
-.fa-wave-square::before { content: "∿"; }
-.fa-hand-pointer::before { content: "☞"; }
-.fa-exclamation-triangle::before { content: "⚠"; }
-.fa-upload::before { content: "⇧"; }
-.fa-spinner::before { content: "◌"; }
+.fa-microchip::before {
+  content: "⬡";
+}
+
+/* header chip */
+.fa-cog::before {
+  content: "⚙";
+}
+
+/* tab cấu hình */
+.fa-th-large::before {
+  content: "☰";
+}
+
+/* tab chức năng */
+.fa-signal::before {
+  content: "⦿";
+}
+
+/* trạng thái kết nối */
+.fa-chevron-down::before {
+  content: "▾";
+}
+
+/* collapsible arrow */
+.fa-sync-alt::before {
+  content: "⟳";
+}
+
+/* làm mới / refresh */
+.fa-wifi::before {
+  content: "◉";
+}
+
+/* WiFi */
+.fa-search::before {
+  content: "⌕";
+}
+
+/* quét WiFi */
+.fa-link::before {
+  content: "⛓";
+}
+
+/* lưu & kết nối */
+.fa-network-wired::before {
+  content: "⌗";
+}
+
+/* LAN / Ethernet */
+.fa-download::before {
+  content: "⤓";
+}
+
+/* tải cấu hình */
+.fa-save::before {
+  content: "💾";
+}
+
+/* lưu */
+.fa-tv::before {
+  content: "▣";
+}
+
+/* bảng LED */
+.fa-road-barrier::before {
+  content: "⫍";
+}
+
+/* barie */
+.fa-traffic-light::before {
+  content: "🚦";
+}
+
+/* đèn giao thông */
+.fa-volume-up::before {
+  content: "🔊";
+}
+
+/* âm thanh */
+.fa-print::before {
+  content: "🖨";
+}
+
+/* máy in */
+.fa-weight-hanging::before {
+  content: "⚖";
+}
+
+/* cân */
+.fa-broadcast-tower::before {
+  content: "📡";
+}
+
+/* beam / sensor tower */
+.fa-cloud-upload-alt::before {
+  content: "☁";
+}
+
+/* OTA update */
+.fa-paper-plane::before {
+  content: "➤";
+}
+
+/* gửi */
+.fa-door-open::before {
+  content: "⇧";
+}
+
+/* mở barie */
+.fa-door-closed::before {
+  content: "⇩";
+}
+
+/* đóng barie */
+.fa-stop-circle::before {
+  content: "◼";
+}
+
+/* dừng */
+.fa-pause-circle::before {
+  content: "⏸";
+}
+
+/* tạm dừng */
+.fa-check::before {
+  content: "✓";
+}
+
+/* áp dụng */
+.fa-eraser::before {
+  content: "⌫";
+}
+
+/* xoá */
+.fa-play::before {
+  content: "▶";
+}
+
+/* phát */
+.fa-satellite-dish::before {
+  content: "⊛";
+}
+
+/* beam sensor 1 */
+.fa-wave-square::before {
+  content: "∿";
+}
+
+/* beam sensor 3 */
+.fa-hand-pointer::before {
+  content: "☞";
+}
+
+/* nút nhấn */
+.fa-exclamation-triangle::before {
+  content: "⚠";
+}
+
+/* cảnh báo */
+.fa-upload::before {
+  content: "⇧";
+}
+
+/* upload firmware */
+.fa-spinner::before {
+  content: "◌";
+}
+
+/* loading */
+.fa-server::before {
+  content: "🖧";
+}
+
+/* server tab */
+.fa-unlink::before {
+  content: "✂";
+}
+
+/* ngắt kết nối */
+.fa-plug::before {
+  content: "⏻";
+}
+
+/* kết nối */
 
 .fa-spin {
   animation: iconSpin 1s linear infinite;
 }
 
 @keyframes iconSpin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* ── Header ── */
@@ -1060,6 +1216,167 @@ body {
 }
 
 /* ══════════════════════════════════════════════════ */
+/*         SERVER TAB                               */
+/* ══════════════════════════════════════════════════ */
+.server-tab-card {
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e2e6ea;
+  overflow: hidden;
+}
+
+.server-tab-header {
+  background: #1a1a2e;
+  padding: 14px 18px;
+}
+
+.server-tab-header h2 {
+  color: #fff;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.server-tab-header h2 i {
+  color: rgba(255, 255, 255, .6);
+}
+
+.server-tab-body {
+  padding: 16px 18px;
+}
+
+.device-type-card {
+  border: 1px solid #e9ecef;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 14px;
+  background: #fbfcfd;
+}
+
+.device-type-card h3 {
+  margin: 0;
+  font-size: 14px;
+  color: #1a1a2e;
+}
+
+.device-type-subtitle {
+  margin: 6px 0 10px;
+  font-size: 12px;
+  color: #6c757d;
+}
+
+.device-type-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e9ecef;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.device-type-table {
+  width: 100%;
+  min-width: 620px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.device-type-table th,
+.device-type-table td {
+  border-bottom: 1px solid #edf0f2;
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.device-type-table th {
+  background: #f5f7fa;
+  color: #495057;
+  font-weight: 600;
+}
+
+.device-type-table tr:last-child td {
+  border-bottom: none;
+}
+
+.device-type-table tr.selected {
+  background: #eef6ff;
+}
+
+.device-conn-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.device-conn-dot.connected {
+  background: #28a745;
+}
+
+.device-conn-dot.disconnected {
+  background: #dc3545;
+}
+
+.device-conn-label {
+  font-size: 12px;
+  vertical-align: middle;
+}
+
+.server-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+}
+
+.status-dot-server {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #adb5bd;
+  flex-shrink: 0;
+}
+
+.server-status-banner.connected {
+  background: #f0fff4;
+  border-color: #28a745;
+}
+
+.server-status-banner.connected .status-dot-server {
+  background: #28a745;
+}
+
+.server-status-banner.disconnected {
+  background: #fff5f5;
+  border-color: #dc3545;
+}
+
+.server-status-banner.disconnected .status-dot-server {
+  background: #dc3545;
+}
+
+.server-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.server-actions-grid .btn {
+  justify-content: center;
+  padding: 7px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* ══════════════════════════════════════════════════ */
 /*         RESPONSIVE                               */
 /* ══════════════════════════════════════════════════ */
 @media (max-width: 700px) {
@@ -1099,6 +1416,10 @@ body {
 
   .sensor-row {
     grid-template-columns: repeat(2, minmax(130px, 1fr));
+  }
+
+  .server-actions-grid {
+    grid-template-columns: repeat(2, 1fr);
   }
 }
 

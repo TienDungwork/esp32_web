@@ -190,15 +190,101 @@
     /* ══════════════════════════════════════════════════ */
     /*             APP SERVER TCP CONFIG                 */
     /* ══════════════════════════════════════════════════ */
+    const APP_DEVICE_TYPES = [
+      { name: 'Đầu đọc QR vào', code: 1 },
+      { name: 'Vòng từ vào', code: 2 },
+      { name: 'Barrier vào', code: 3 },
+      { name: 'Đèn led vào', code: 4 },
+      { name: 'Đèn giao thông vào', code: 5 },
+      { name: 'Lưới hồng ngoại vào', code: 6 },
+      { name: 'Máy in vào', code: 7 },
+      { name: 'Đầu phát thẻ UHF vào', code: 8 },
+      { name: 'Đầu đọc thẻ UHF vào', code: 9 },
+      { name: 'Camera vào', code: 10 },
+      { name: 'Camera nhận diện biển số vào', code: 11 },
+      { name: 'Đầu đọc QR ra', code: 51 },
+      { name: 'Vòng từ ra', code: 52 },
+      { name: 'Barrier ra', code: 53 },
+      { name: 'Đèn led ra', code: 54 },
+      { name: 'Đèn giao thông ra', code: 55 },
+      { name: 'Lưới hồng ngoại ra', code: 56 },
+      { name: 'Máy in ra', code: 57 },
+      { name: 'Đầu phát thẻ UHF ra', code: 58 },
+      { name: 'Đầu đọc thẻ UHF ra', code: 59 },
+      { name: 'Camera ra', code: 60 },
+      { name: 'Camera nhận diện biển số ra', code: 61 },
+      { name: 'Loadcell - cảm biến cân', code: 101 },
+      { name: 'Loa', code: 102 },
+      { name: 'Camera toàn cảnh', code: 103 }
+    ];
+
+    const APP_DEVICE_TYPE_CODE_SET = new Set(APP_DEVICE_TYPES.map(x => x.code));
+    let appServerSelectedDeviceCode = 1;
+
+    function renderDeviceTypeTable() {
+      const tableBody = document.querySelector('#deviceTypeTable tbody');
+      if (!tableBody) return;
+
+      tableBody.innerHTML = APP_DEVICE_TYPES.map(item => `
+        <tr data-device-code="${item.code}">
+          <td>${item.name}</td>
+          <td>${item.code}</td>
+          <td>
+            <span class="device-conn-dot disconnected" id="deviceConnDot-${item.code}"></span>
+            <span class="device-conn-label" id="deviceConnLabel-${item.code}">Chưa kết nối</span>
+          </td>
+          <td>
+            <button class="btn btn-small btn-primary" type="button" onclick="selectAppDeviceType(${item.code})">Chọn</button>
+          </td>
+        </tr>
+      `).join('');
+
+      selectAppDeviceType(appServerSelectedDeviceCode, false);
+      updateDeviceTypeConnectionIndicators(false);
+    }
+
+    function selectAppDeviceType(deviceCode, syncCode = true) {
+      if (!APP_DEVICE_TYPE_CODE_SET.has(deviceCode)) return;
+
+      appServerSelectedDeviceCode = deviceCode;
+      const idTypeInput = document.getElementById('appServerIdType');
+      const connectCodeInput = document.getElementById('appServerConnectRequestCode');
+      if (idTypeInput) idTypeInput.value = String(deviceCode);
+      if (connectCodeInput && syncCode) connectCodeInput.value = String(deviceCode);
+
+      document.querySelectorAll('#deviceTypeTable tbody tr').forEach(row => {
+        const rowCode = parseInt(row.getAttribute('data-device-code') || '0', 10);
+        row.classList.toggle('selected', rowCode === deviceCode);
+      });
+    }
+
+    function updateDeviceTypeConnectionIndicators(connected, selectedCode = appServerSelectedDeviceCode) {
+      APP_DEVICE_TYPES.forEach(item => {
+        const isSelected = item.code === selectedCode;
+        const isConnected = !!connected && isSelected;
+
+        const dotEl = document.getElementById(`deviceConnDot-${item.code}`);
+        const labelEl = document.getElementById(`deviceConnLabel-${item.code}`);
+        if (!dotEl || !labelEl) return;
+
+        dotEl.classList.remove('connected', 'disconnected');
+        dotEl.classList.add(isConnected ? 'connected' : 'disconnected');
+        labelEl.textContent = isConnected ? 'Đã kết nối' : 'Mất kết nối';
+      });
+    }
+
     function getAppServerPayloadFromForm() {
       const ip = document.getElementById('appServerIp')?.value?.trim() || '';
       const port = parseInt(document.getElementById('appServerPort')?.value || '0', 10);
       const idType = parseInt(document.getElementById('appServerIdType')?.value || '1', 10);
+      const connectRequestCode = parseInt(document.getElementById('appServerConnectRequestCode')?.value || '1', 10);
       const autoReconnect = !!document.getElementById('appServerAutoReconnect')?.checked;
       return {
         ip,
         port: Number.isNaN(port) ? 0 : port,
         id_type: Number.isNaN(idType) ? 1 : idType,
+        connect_request_code: Number.isNaN(connectRequestCode) ? 1 : connectRequestCode,
+        selected_device_code: appServerSelectedDeviceCode,
         auto_reconnect: autoReconnect
       };
     }
@@ -207,13 +293,26 @@
       if (!data || typeof data !== 'object') return;
       document.getElementById('appServerIp').value = data.ip || '';
       document.getElementById('appServerPort').value = data.port || '';
-      document.getElementById('appServerIdType').value = data.id_type || 1;
+      const selectedCode = parseInt(data.selected_device_code || data.id_type || 1, 10);
+      if (APP_DEVICE_TYPE_CODE_SET.has(selectedCode)) {
+        selectAppDeviceType(selectedCode, false);
+      } else {
+        selectAppDeviceType(1, false);
+      }
+      document.getElementById('appServerIdType').value = data.id_type || appServerSelectedDeviceCode;
+      document.getElementById('appServerConnectRequestCode').value = data.connect_request_code || appServerSelectedDeviceCode;
       document.getElementById('appServerAutoReconnect').checked = !!data.auto_reconnect;
     }
 
     function setAppServerStatusText(connected, lastError = '') {
       const stateEl = document.getElementById('appServerConnState');
+      const bannerEl = document.getElementById('serverStatusBanner');
       if (!stateEl) return;
+
+      if (bannerEl) {
+        bannerEl.classList.remove('connected', 'disconnected');
+        bannerEl.classList.add(connected ? 'connected' : 'disconnected');
+      }
 
       if (connected) {
         stateEl.textContent = 'Đã kết nối';
@@ -222,6 +321,8 @@
         stateEl.textContent = lastError ? `Mất kết nối (${lastError})` : 'Chưa kết nối';
         stateEl.style.color = '#dc3545';
       }
+
+      updateDeviceTypeConnectionIndicators(connected, appServerSelectedDeviceCode);
     }
 
     async function loadAppServerConfig() {
@@ -245,6 +346,10 @@
         const res = await fetch('/api/app-server/status');
         if (!res.ok) throw new Error('status error');
         const data = await res.json();
+        const selectedCode = parseInt(data.selected_device_code || data.id_type || appServerSelectedDeviceCode, 10);
+        if (APP_DEVICE_TYPE_CODE_SET.has(selectedCode)) {
+          selectAppDeviceType(selectedCode, false);
+        }
         setAppServerStatusText(!!data.connected, data.last_error || '');
       } catch (_) {
         setAppServerStatusText(false, 'status unavailable');
@@ -260,7 +365,7 @@
 
       if (!payload.ip) { msgEl.textContent = 'Vui lòng nhập IP server.'; return; }
       if (payload.port < 1 || payload.port > 65535) { msgEl.textContent = 'Port phải từ 1..65535.'; return; }
-      if (payload.id_type < 1 || payload.id_type > 255) { msgEl.textContent = 'ID Type phải từ 1..255.'; return; }
+      if (!APP_DEVICE_TYPE_CODE_SET.has(payload.selected_device_code)) { msgEl.textContent = 'Thiết bị chưa hợp lệ.'; return; }
 
       msgEl.textContent = 'Đang lưu cấu hình server...';
       try {
@@ -282,7 +387,7 @@
 
       if (!payload.ip) { msgEl.textContent = 'Vui lòng nhập IP server.'; return; }
       if (payload.port < 1 || payload.port > 65535) { msgEl.textContent = 'Port phải từ 1..65535.'; return; }
-      if (payload.id_type < 1 || payload.id_type > 255) { msgEl.textContent = 'ID Type phải từ 1..255.'; return; }
+      if (!APP_DEVICE_TYPE_CODE_SET.has(payload.selected_device_code)) { msgEl.textContent = 'Thiết bị chưa hợp lệ.'; return; }
 
       msgEl.textContent = 'Đang kết nối tới server...';
       try {
@@ -297,6 +402,36 @@
           : (data.error || data.message || 'Kết nối thất bại.');
       } catch (_) {
         msgEl.textContent = 'Không kết nối được server.';
+      }
+
+      await refreshAppServerStatus();
+    }
+
+    async function sendConnectRequestPacket() {
+      const msgEl = document.getElementById('appServerMessage');
+      const connectRequestCode = parseInt(document.getElementById('appServerConnectRequestCode')?.value || String(appServerSelectedDeviceCode), 10);
+
+      if (Number.isNaN(connectRequestCode) || connectRequestCode < 1 || connectRequestCode > 1000000) {
+        msgEl.textContent = 'Connect Request Code phải từ 1..1000000.';
+        return;
+      }
+
+      msgEl.textContent = `Đang gửi gói yêu cầu kết nối (Code=${connectRequestCode})...`;
+      try {
+        const res = await fetch('/api/app-server/send-connect-request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            connect_request_code: connectRequestCode,
+            selected_device_code: appServerSelectedDeviceCode
+          })
+        });
+        const data = await res.json();
+        msgEl.textContent = res.ok
+          ? (data.message || 'Đã gửi gói yêu cầu kết nối.')
+          : (data.error || 'Gửi gói yêu cầu kết nối thất bại.');
+      } catch (_) {
+        msgEl.textContent = 'Không gửi được gói yêu cầu kết nối.';
       }
 
       await refreshAppServerStatus();
@@ -615,6 +750,7 @@
     /*                    INIT                           */
     /* ══════════════════════════════════════════════════ */
     window.addEventListener('load', () => {
+      renderDeviceTypeTable();
       document.querySelectorAll('input[name="trafficState"]').forEach((input) => {
         input.addEventListener('change', () => {
           trafficSelectionDirty = true;
