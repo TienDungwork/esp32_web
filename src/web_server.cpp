@@ -29,6 +29,9 @@ static unsigned long appServerLastConnectedAtMs = 0;
 static unsigned long appServerLastRxAtMs = 0;
 static String appServerLastError = "";
 static String appServerRxBuffer = "";
+static bool appServerConnectionConfirmed = false;
+static int appServerLastResponseStatus = -1;
+static int appServerLastResponseCode = 0;
 
 enum class DeviceControlMode : uint8_t {
   NONE = 0,
@@ -169,7 +172,7 @@ static bool applyLedConfigDoc(DynamicJsonDocument& srcDoc, String* errorMessage 
     return value;
   };
 
-  JsonArray inputLines = srcDoc["lines"].as<JsonArray>();
+  JsonArray inputLines = srcDoc["lines"];
   for (JsonVariant item : inputLines) {
     int lineNumber = item["line"] | 0;
     if (lineNumber < 1 || lineNumber > 5) continue;
@@ -242,6 +245,15 @@ static bool handleAppServerPacket(const String& packetJson, String* errorMessage
   }
 
   int code = packetDoc["Code"] | 0;
+  if (code > 0) {
+    appServerLastResponseCode = code;
+  }
+
+  if (packetDoc.containsKey("Status")) {
+    appServerLastResponseStatus = packetDoc["Status"] | 0;
+    appServerConnectionConfirmed = (appServerLastResponseStatus == 1);
+  }
+
   String message = packetDoc["Message"].as<String>();
 
   if (code == 201) {
@@ -359,6 +371,9 @@ static bool appServerConnectNow() {
   appServerLastConnectedAtMs = millis();
   appServerRxBuffer = "";
   appServerLastError = "";
+  appServerConnectionConfirmed = false;
+  appServerLastResponseStatus = -1;
+  appServerLastResponseCode = 0;
   sendConnectionRequestPacket();
   return true;
 }
@@ -367,6 +382,7 @@ static void appServerDisconnect() {
   if (appServerClient.connected()) {
     appServerClient.stop();
   }
+  appServerConnectionConfirmed = false;
 }
 
 static void appServerLoop() {
@@ -564,6 +580,7 @@ static void handleAppServerSendConnectRequest() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
 
   if (!appServerClient.connected()) {
+    appServerConnectionConfirmed = false;
     server.send(409, "application/json", "{\"success\":false,\"error\":\"Socket is not connected\"}");
     return;
   }
@@ -585,6 +602,7 @@ static void handleAppServerSendConnectRequest() {
   }
 
   sendConnectionRequestPacket();
+  appServerConnectionConfirmed = false;
 
   DynamicJsonDocument resp(256);
   resp["success"] = true;
@@ -601,6 +619,7 @@ static void handleAppServerStatus() {
 
   DynamicJsonDocument doc(512);
   doc["connected"] = appServerClient.connected();
+  doc["connection_confirmed"] = appServerConnectionConfirmed;
   doc["ip"] = appServerIp;
   doc["port"] = appServerPort;
   doc["id_type"] = appServerIdType;
@@ -612,6 +631,8 @@ static void handleAppServerStatus() {
   doc["last_connect_attempt_ms"] = appServerLastConnectAttemptMs;
   doc["last_connected_at_ms"] = appServerLastConnectedAtMs;
   doc["last_rx_at_ms"] = appServerLastRxAtMs;
+  doc["last_response_status"] = appServerLastResponseStatus;
+  doc["last_response_code"] = appServerLastResponseCode;
 
   String out;
   serializeJson(doc, out);

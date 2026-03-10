@@ -269,7 +269,7 @@
 
         dotEl.classList.remove('connected', 'disconnected');
         dotEl.classList.add(isConnected ? 'connected' : 'disconnected');
-        labelEl.textContent = isConnected ? 'Đã kết nối' : 'Mất kết nối';
+        labelEl.textContent = isConnected ? 'Đã kết nối' : 'Chưa kết nối';
       });
     }
 
@@ -318,7 +318,7 @@
         stateEl.textContent = 'Đã kết nối';
         stateEl.style.color = '#198754';
       } else {
-        stateEl.textContent = lastError ? `Mất kết nối (${lastError})` : 'Chưa kết nối';
+        stateEl.textContent = lastError ? `Chưa kết nối (${lastError})` : 'Chưa kết nối';
         stateEl.style.color = '#dc3545';
       }
 
@@ -350,7 +350,8 @@
         if (APP_DEVICE_TYPE_CODE_SET.has(selectedCode)) {
           selectAppDeviceType(selectedCode, false);
         }
-        setAppServerStatusText(!!data.connected, data.last_error || '');
+        const confirmed = !!data.connection_confirmed;
+        setAppServerStatusText(confirmed, data.last_error || '');
       } catch (_) {
         setAppServerStatusText(false, 'status unavailable');
       }
