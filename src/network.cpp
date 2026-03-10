@@ -249,14 +249,24 @@ static bool startWifiStaFromConfig() {
 
   // Do not disable AP while connecting STA.
   WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleep(false);
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
+
+  // Clean previous STA session before applying new credentials/IP mode.
+  WiFi.disconnect(false, true);
+  delay(120);
 
   if (wifi_use_static_ip) {
     Serial.print("WiFi STA: static IP ");
     Serial.println(wifi_static_ip);
     if (!WiFi.config(wifi_static_ip, wifi_gateway, wifi_subnet, wifi_dns1, wifi_dns2)) {
       Serial.println("Failed to configure WiFi static IP");
+    }
+  } else {
+    const IPAddress zeroIp(0, 0, 0, 0);
+    if (!WiFi.config(zeroIp, zeroIp, zeroIp, zeroIp, zeroIp)) {
+      Serial.println("Failed to set DHCP mode for WiFi STA");
     }
   }
 
@@ -287,6 +297,9 @@ static bool startWifiStaFromConfig() {
   }
 
   wifiConnected = false;
+  if (!ethernetConnected) {
+    currentNetworkMode = NetworkMode::WIFI_AP_MODE;
+  }
   Serial.println("WiFi STA connect failed");
   return false;
 }

@@ -761,18 +761,36 @@ static void handleWifiScan() {
   Serial.println("WiFi scan requested");
 
   wifi_mode_t currentMode = WiFi.getMode();
-  if (currentMode == WIFI_OFF) {
-    Serial.println("WiFi scan: switching to STA mode");
-    WiFi.mode(WIFI_STA);
-    delay(120);
-  } else if (currentMode == WIFI_AP) {
+  if (currentMode == WIFI_AP) {
     Serial.println("WiFi scan: switching AP -> AP+STA");
+    WiFi.mode(WIFI_AP_STA);
+    delay(120);
+  } else if (currentMode == WIFI_OFF) {
+    Serial.println("WiFi scan: switching OFF -> AP+STA");
     WiFi.mode(WIFI_AP_STA);
     delay(120);
   }
 
+  // Cleanup previous scan result to avoid stale state.
+  WiFi.scanDelete();
+  delay(20);
+
+  WiFi.setSleep(false);
+
   unsigned long scanStart = millis();
-  int n = WiFi.scanNetworks(false, true, false, 100);
+  int n = WIFI_SCAN_FAILED;
+  for (int attempt = 0; attempt < 3; attempt++) {
+    // Active scan is generally more reliable on ESP32-S3 while AP+STA is enabled.
+    n = WiFi.scanNetworks(false, true, false, 600);
+    if (n != WIFI_SCAN_FAILED) {
+      break;
+    }
+    Serial.println("WiFi scan failed, retry attempt " + String(attempt + 1));
+    delay(200);
+    WiFi.mode(WIFI_AP_STA);
+    delay(100);
+    WiFi.scanDelete();
+  }
   unsigned long scanDuration = millis() - scanStart;
   Serial.println("Scan completed in " + String(scanDuration) + "ms");
 
@@ -788,23 +806,25 @@ static void handleWifiScan() {
     return;
   }
 
-  String response = "{\"networks\":[";
-  int maxNetworks = min(n, 6);
+  DynamicJsonDocument responseDoc(3072);
+  JsonArray networks = responseDoc.createNestedArray("networks");
+
+  int maxNetworks = min(n, 12);
   for (int i = 0; i < maxNetworks; i++) {
-    if (i > 0) response += ",";
     String ssid = WiFi.SSID(i);
     ssid.replace("\"", "");
     ssid.replace("\\", "");
     ssid.replace("\n", "");
     ssid.replace("\r", "");
 
-    response += "{";
-    response += "\"ssid\":\"" + ssid + "\",";
-    response += "\"rssi\":" + String(WiFi.RSSI(i)) + ",";
-    response += "\"encrypted\":" + String((WiFi.encryptionType(i) != WIFI_AUTH_OPEN) ? "true" : "false");
-    response += "}";
+    JsonObject item = networks.createNestedObject();
+    item["ssid"] = ssid;
+    item["rssi"] = WiFi.RSSI(i);
+    item["encrypted"] = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
   }
-  response += "]}";
+
+  String response;
+  serializeJson(responseDoc, response);
 
   server.send(200, "application/json", response);
   WiFi.scanDelete();
@@ -865,18 +885,38 @@ static void handleWifiConnect() {
 
   // Start from AP+STA for provisioning connect flow.
   WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleep(false);
+  WiFi.setAutoReconnect(true);
+  WiFi.persistent(true);
+
+  // Always reset previous STA state so reconnecting with same/new SSID is clean.
+  WiFi.disconnect(false, true);
+  delay(150);
+
   if (wifi_use_static_ip) {
     if (!WiFi.config(wifi_static_ip, wifi_gateway, wifi_subnet, wifi_dns1, wifi_dns2)) {
       Serial.println("Failed to configure static IP");
     }
+  } else {
+    const IPAddress zeroIp(0, 0, 0, 0);
+    if (!WiFi.config(zeroIp, zeroIp, zeroIp, zeroIp, zeroIp)) {
+      Serial.println("Failed to set DHCP mode");
+    }
   }
+
   WiFi.begin(ssid.c_str(), password.c_str());
 
   unsigned long start = millis();
   bool connected = false;
+  wl_status_t lastStatus = WL_IDLE_STATUS;
   while (millis() - start < 15000) {
-    if (WiFi.status() == WL_CONNECTED) {
+    wl_status_t st = WiFi.status();
+    lastStatus = st;
+    if (st == WL_CONNECTED) {
       connected = true;
+      break;
+    }
+    if (st == WL_CONNECT_FAILED || st == WL_NO_SSID_AVAIL || st == WL_WRONG_PASSWORD) {
       break;
     }
     delay(500);
@@ -894,7 +934,12 @@ static void handleWifiConnect() {
     Serial.print("IP: ");
     Serial.println(WiFi.localIP());
   } else {
+    wifiConnected = false;
+    if (!ethernetConnected) {
+      currentNetworkMode = NetworkMode::WIFI_AP_MODE;
+    }
     Serial.println("WiFi connection failed, keeping AP active");
+    Serial.println("WiFi status code: " + String(static_cast<int>(lastStatus)));
   }
 }
 

@@ -191,35 +191,23 @@
     /*             APP SERVER TCP CONFIG                 */
     /* ══════════════════════════════════════════════════ */
     const APP_DEVICE_TYPES = [
-      { name: 'Đầu đọc QR vào', code: 1 },
-      { name: 'Vòng từ vào', code: 2 },
       { name: 'Barrier vào', code: 3 },
-      { name: 'Đèn led vào', code: 4 },
       { name: 'Đèn giao thông vào', code: 5 },
       { name: 'Lưới hồng ngoại vào', code: 6 },
       { name: 'Máy in vào', code: 7 },
-      { name: 'Đầu phát thẻ UHF vào', code: 8 },
-      { name: 'Đầu đọc thẻ UHF vào', code: 9 },
       { name: 'Camera vào', code: 10 },
       { name: 'Camera nhận diện biển số vào', code: 11 },
-      { name: 'Đầu đọc QR ra', code: 51 },
-      { name: 'Vòng từ ra', code: 52 },
       { name: 'Barrier ra', code: 53 },
-      { name: 'Đèn led ra', code: 54 },
       { name: 'Đèn giao thông ra', code: 55 },
       { name: 'Lưới hồng ngoại ra', code: 56 },
       { name: 'Máy in ra', code: 57 },
-      { name: 'Đầu phát thẻ UHF ra', code: 58 },
-      { name: 'Đầu đọc thẻ UHF ra', code: 59 },
-      { name: 'Camera ra', code: 60 },
-      { name: 'Camera nhận diện biển số ra', code: 61 },
-      { name: 'Loadcell - cảm biến cân', code: 101 },
-      { name: 'Loa', code: 102 },
-      { name: 'Camera toàn cảnh', code: 103 }
+      { name: 'Loa', code: 102 }
     ];
 
+    const APP_DEFAULT_DEVICE_CODE = 3;
+
     const APP_DEVICE_TYPE_CODE_SET = new Set(APP_DEVICE_TYPES.map(x => x.code));
-    let appServerSelectedDeviceCode = 1;
+    let appServerSelectedDeviceCode = APP_DEFAULT_DEVICE_CODE;
 
     function renderDeviceTypeTable() {
       const tableBody = document.querySelector('#deviceTypeTable tbody');
@@ -276,14 +264,14 @@
     function getAppServerPayloadFromForm() {
       const ip = document.getElementById('appServerIp')?.value?.trim() || '';
       const port = parseInt(document.getElementById('appServerPort')?.value || '0', 10);
-      const idType = parseInt(document.getElementById('appServerIdType')?.value || '1', 10);
-      const connectRequestCode = parseInt(document.getElementById('appServerConnectRequestCode')?.value || '1', 10);
+      const idType = parseInt(document.getElementById('appServerIdType')?.value || String(APP_DEFAULT_DEVICE_CODE), 10);
+      const connectRequestCode = parseInt(document.getElementById('appServerConnectRequestCode')?.value || String(APP_DEFAULT_DEVICE_CODE), 10);
       const autoReconnect = !!document.getElementById('appServerAutoReconnect')?.checked;
       return {
         ip,
         port: Number.isNaN(port) ? 0 : port,
-        id_type: Number.isNaN(idType) ? 1 : idType,
-        connect_request_code: Number.isNaN(connectRequestCode) ? 1 : connectRequestCode,
+        id_type: Number.isNaN(idType) ? APP_DEFAULT_DEVICE_CODE : idType,
+        connect_request_code: Number.isNaN(connectRequestCode) ? APP_DEFAULT_DEVICE_CODE : connectRequestCode,
         selected_device_code: appServerSelectedDeviceCode,
         auto_reconnect: autoReconnect
       };
@@ -293,11 +281,11 @@
       if (!data || typeof data !== 'object') return;
       document.getElementById('appServerIp').value = data.ip || '';
       document.getElementById('appServerPort').value = data.port || '';
-      const selectedCode = parseInt(data.selected_device_code || data.id_type || 1, 10);
+      const selectedCode = parseInt(data.selected_device_code || data.id_type || APP_DEFAULT_DEVICE_CODE, 10);
       if (APP_DEVICE_TYPE_CODE_SET.has(selectedCode)) {
         selectAppDeviceType(selectedCode, false);
       } else {
-        selectAppDeviceType(1, false);
+        selectAppDeviceType(APP_DEFAULT_DEVICE_CODE, false);
       }
       document.getElementById('appServerIdType').value = data.id_type || appServerSelectedDeviceCode;
       document.getElementById('appServerConnectRequestCode').value = data.connect_request_code || appServerSelectedDeviceCode;
