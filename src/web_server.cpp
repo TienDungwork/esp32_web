@@ -916,7 +916,7 @@ static void handleWifiConnect() {
       connected = true;
       break;
     }
-    if (st == WL_CONNECT_FAILED || st == WL_NO_SSID_AVAIL || st == WL_WRONG_PASSWORD) {
+    if (st == WL_CONNECT_FAILED || st == WL_NO_SSID_AVAIL) {
       break;
     }
     delay(500);
