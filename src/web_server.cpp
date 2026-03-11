@@ -82,7 +82,10 @@ static String getFirmwareBuildStamp() {
 }
 
 static bool hasNetworkUplink() {
-  return ethernetConnected || wifiConnected;
+  // Đừng tin wifiConnected/ethernetConnected vì có thể bị stale khi link rớt.
+  bool staUp = (WiFi.status() == WL_CONNECTED) && (WiFi.localIP() != INADDR_NONE) && (WiFi.localIP().toString() != "0.0.0.0");
+  bool ethUp = ethernetConnected; // nếu cần chặt hơn có thể thay bằng ESP32_W5500_isConnected()
+  return staUp || ethUp;
 }
 
 static bool isSupportedDeviceCode(int code) {
@@ -390,8 +393,14 @@ static bool appServerConnectNow() {
   appServerLastConnectAttemptMs = millis();
 
   if (!hasNetworkUplink()) {
-    appServerLastError = "No WiFi STA/Ethernet uplink";
+    // Cập nhật lại cờ wifiConnected nếu STA đã rớt
+    if (wifiConnected && WiFi.status() != WL_CONNECTED) {
+      wifiConnected = false;
+    }
+    appServerLastError = "No WiFi STA/Ethernet uplink (STA not connected or IP=0.0.0.0)";
     logAppServer("Connect blocked: no uplink");
+    logAppServer("STA.status=" + String((int)WiFi.status()) + " STA.ip=" + WiFi.localIP().toString() +
+                 " mode=" + String((int)WiFi.getMode()) + " eth=" + String(ethernetConnected ? "1" : "0"));
     return false;
   }
 
@@ -411,11 +420,14 @@ static bool appServerConnectNow() {
   appServerClient.stop();
   appServerClient.setTimeout(1500);
 
-  logAppServer("Connecting to " + appServerIp + ":" + String(appServerPort) + " id_type=" + String(appServerIdType));
+  logAppServer("Connecting to " + appServerIp + ":" + String(appServerPort) + " id_type=" + String(appServerIdType) +
+               " STA.ip=" + WiFi.localIP().toString() + " STA.status=" + String((int)WiFi.status()) +
+               " mode=" + String((int)WiFi.getMode()));
   bool ok = appServerClient.connect(appServerIp.c_str(), appServerPort);
   if (!ok) {
     appServerLastError = "Connect failed";
     logAppServer("Connect failed");
+    logAppServer("After fail: STA.status=" + String((int)WiFi.status()) + " STA.ip=" + WiFi.localIP().toString());
     return false;
   }
 
