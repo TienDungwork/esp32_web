@@ -272,6 +272,8 @@
         port: Number.isNaN(port) ? 0 : port,
         id_type: Number.isNaN(idType) ? APP_DEFAULT_DEVICE_CODE : idType,
         connect_request_code: Number.isNaN(connectRequestCode) ? APP_DEFAULT_DEVICE_CODE : connectRequestCode,
+        // Mã thiết bị được chọn trong bảng (gửi khi bấm "Gửi yêu cầu")
+        selected_device_code: appServerSelectedDeviceCode,
         auto_reconnect: autoReconnect
       };
     }
@@ -419,7 +421,6 @@
     async function sendConnectRequestPacket() {
       const msgEl = document.getElementById('appServerMessage');
       const connectRequestCode = parseInt(document.getElementById('appServerConnectRequestCode')?.value || String(appServerSelectedDeviceCode), 10);
-      const deviceCode = (document.getElementById('appServerDeviceCode')?.value || '').trim();
 
       if (Number.isNaN(connectRequestCode) || connectRequestCode < 1 || connectRequestCode > 1000000) {
         msgEl.textContent = 'Connect Request Code phải từ 1..1000000.';
@@ -433,7 +434,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             connect_request_code: connectRequestCode,
-            device_code: deviceCode
+            selected_device_code: appServerSelectedDeviceCode
           })
         });
         const data = await res.json();

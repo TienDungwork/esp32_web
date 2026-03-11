@@ -276,7 +276,7 @@ static bool handleAppServerPacket(const String& packetJson, String* errorMessage
   return false;
 }
 
-static void sendConnectionRequestPacket(const String& deviceCode) {
+static void sendConnectionRequestPacket() {
   DynamicJsonDocument deviceInfo(768);
   deviceInfo["model"] = "ESP32-S3";
   deviceInfo["firmwareVersion"] = APP_FIRMWARE_VERSION;
@@ -284,9 +284,6 @@ static void sendConnectionRequestPacket(const String& deviceCode) {
   deviceInfo["networkMode"] = networkGetModeString();
   deviceInfo["ip"] = networkGetCurrentIp().toString();
   deviceInfo["mac"] = WiFi.macAddress();
-  if (deviceCode.length() > 0) {
-    deviceInfo["deviceCode"] = deviceCode;
-  }
 
   String message;
   serializeJson(deviceInfo, message);
@@ -295,7 +292,7 @@ static void sendConnectionRequestPacket(const String& deviceCode) {
     return;
   }
 
-  logAppServer("Sent connection request packet (Code=" + String(appServerConnectRequestCode) + ", deviceCode=" + (deviceCode.length() ? deviceCode : "-") + ")");
+  logAppServer("Sent connection request packet (Code=" + String(appServerConnectRequestCode) + ", selected_device_code=" + String(appServerSelectedDeviceCode) + ")");
 }
 
 static void loadAppServerConfig() {
@@ -608,21 +605,24 @@ static void handleAppServerSendConnectRequest() {
     return;
   }
 
-  String deviceCode = "";
   String body = server.arg("plain");
   if (body.length() > 0) {
     DynamicJsonDocument doc(256);
     if (deserializeJson(doc, body) == DeserializationError::Ok) {
       int code = doc["connect_request_code"] | appServerConnectRequestCode;
-      deviceCode = doc["device_code"] | "";
+      int selectedDeviceCode = doc["selected_device_code"] | appServerSelectedDeviceCode;
+
+      if (isSupportedDeviceCode(selectedDeviceCode)) {
+        applySelectedDeviceCode(selectedDeviceCode);
+      }
       if (code >= 1 && code <= 1000000) {
         appServerConnectRequestCode = code;
       }
     }
   }
 
-  logAppServer("Send connect request: code=" + String(appServerConnectRequestCode) + " deviceCode=" + (deviceCode.length() ? deviceCode : "-"));
-  sendConnectionRequestPacket(deviceCode);
+  logAppServer("Send connect request: code=" + String(appServerConnectRequestCode) + " selected_device_code=" + String(appServerSelectedDeviceCode));
+  sendConnectionRequestPacket();
   appServerConnectionConfirmed = false;
 
   DynamicJsonDocument resp(256);
