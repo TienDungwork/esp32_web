@@ -27,11 +27,17 @@ static bool appServerEnabled = false;
 static unsigned long appServerLastConnectAttemptMs = 0;
 static unsigned long appServerLastConnectedAtMs = 0;
 static unsigned long appServerLastRxAtMs = 0;
+static unsigned long appServerLastTxAtMs = 0;
+static bool appServerWaitingForResponse = false;
 static String appServerLastError = "";
 static String appServerRxBuffer = "";
 static bool appServerConnectionConfirmed = false;
 static int appServerLastResponseStatus = -1;
 static int appServerLastResponseCode = 0;
+
+static void logAppServer(const String& msg) {
+  Serial.println("[AppServer] " + msg);
+}
 
 enum class DeviceControlMode : uint8_t {
   NONE = 0,
@@ -144,11 +150,15 @@ static bool writePacketToAppServer(int code,
   out += "\n";
 
   size_t written = appServerClient.print(out);
+  appServerLastTxAtMs = millis();
+  appServerWaitingForResponse = true;
   if (written != out.length()) {
     appServerLastError = "Write packet failed";
+    logAppServer("TX failed (wrote " + String(written) + "/" + String(out.length()) + " bytes)");
     return false;
   }
 
+  logAppServer("TX Code=" + String(code) + " bytes=" + String(out.length()));
   return true;
 }
 
@@ -266,7 +276,7 @@ static bool handleAppServerPacket(const String& packetJson, String* errorMessage
   return false;
 }
 
-static void sendConnectionRequestPacket() {
+static void sendConnectionRequestPacket(const String& deviceCode) {
   DynamicJsonDocument deviceInfo(768);
   deviceInfo["model"] = "ESP32-S3";
   deviceInfo["firmwareVersion"] = APP_FIRMWARE_VERSION;
@@ -274,15 +284,18 @@ static void sendConnectionRequestPacket() {
   deviceInfo["networkMode"] = networkGetModeString();
   deviceInfo["ip"] = networkGetCurrentIp().toString();
   deviceInfo["mac"] = WiFi.macAddress();
+  if (deviceCode.length() > 0) {
+    deviceInfo["deviceCode"] = deviceCode;
+  }
 
   String message;
   serializeJson(deviceInfo, message);
   if (!writePacketToAppServer(appServerConnectRequestCode, message, false, 0, false, 0)) {
-    Serial.println("[AppServer] Failed to send connection request packet");
+    logAppServer("Failed to send connection request packet");
     return;
   }
 
-  Serial.println("[AppServer] Sent connection request packet (Code=" + String(appServerConnectRequestCode) + ")");
+  logAppServer("Sent connection request packet (Code=" + String(appServerConnectRequestCode) + ", deviceCode=" + (deviceCode.length() ? deviceCode : "-") + ")");
 }
 
 static void loadAppServerConfig() {
@@ -345,26 +358,31 @@ static bool appServerConnectNow() {
 
   if (!hasNetworkUplink()) {
     appServerLastError = "No WiFi STA/Ethernet uplink";
+    logAppServer("Connect blocked: no uplink");
     return false;
   }
 
   appServerIp.trim();
   if (appServerIp.length() == 0 || appServerPort == 0) {
     appServerLastError = "IP/Port is empty or invalid";
+    logAppServer("Connect blocked: invalid IP/Port");
     return false;
   }
 
   if (appServerClient.connected()) {
     appServerLastError = "";
+    logAppServer("Already connected");
     return true;
   }
 
   appServerClient.stop();
   appServerClient.setTimeout(1500);
 
+  logAppServer("Connecting to " + appServerIp + ":" + String(appServerPort) + " id_type=" + String(appServerIdType));
   bool ok = appServerClient.connect(appServerIp.c_str(), appServerPort);
   if (!ok) {
     appServerLastError = "Connect failed";
+    logAppServer("Connect failed");
     return false;
   }
 
@@ -374,7 +392,8 @@ static bool appServerConnectNow() {
   appServerConnectionConfirmed = false;
   appServerLastResponseStatus = -1;
   appServerLastResponseCode = 0;
-  sendConnectionRequestPacket();
+  appServerWaitingForResponse = false;
+  logAppServer("TCP connected. Local=" + appServerClient.localIP().toString() + ":" + String(appServerClient.localPort()));
   return true;
 }
 
@@ -383,10 +402,22 @@ static void appServerDisconnect() {
     appServerClient.stop();
   }
   appServerConnectionConfirmed = false;
+  appServerWaitingForResponse = false;
+  logAppServer("Disconnected");
 }
 
 static void appServerLoop() {
   if (appServerClient.connected()) {
+    // Timeout chờ phản hồi sau khi gửi yêu cầu
+    if (appServerWaitingForResponse && !appServerConnectionConfirmed) {
+      const unsigned long timeoutMs = 5000;
+      if (appServerLastTxAtMs > 0 && millis() - appServerLastTxAtMs > timeoutMs) {
+        appServerWaitingForResponse = false;
+        appServerLastError = "Timeout waiting server response";
+        logAppServer("Timeout waiting response (" + String(timeoutMs) + "ms)");
+      }
+    }
+
     while (appServerClient.available() > 0) {
       char ch = static_cast<char>(appServerClient.read());
       appServerRxBuffer += ch;
@@ -409,7 +440,7 @@ static void appServerLoop() {
         bool handled = handleAppServerPacket(packet, &err);
         if (!handled && err.length() > 0) {
           appServerLastError = err;
-          Serial.println("[AppServer] RX packet handling failed: " + err);
+          logAppServer("RX packet handling failed: " + err);
         }
       }
 
@@ -527,21 +558,13 @@ static void handleAppServerConnect() {
       String ip = doc["ip"].as<String>();
       int port = doc["port"] | 0;
       int idType = doc["id_type"] | 1;
-      int connectRequestCode = doc["connect_request_code"] | 1;
-      int selectedDeviceCode = doc["selected_device_code"] | 0;
       bool autoReconnect = doc["auto_reconnect"] | true;
 
       ip.trim();
       if (ip.length() > 0) appServerIp = ip;
       if (port >= 1 && port <= 65535) appServerPort = static_cast<uint16_t>(port);
-      if (isSupportedDeviceCode(selectedDeviceCode)) {
-        applySelectedDeviceCode(selectedDeviceCode);
-      } else {
-        if (idType >= 1 && idType <= 255) {
-          appServerIdType = static_cast<uint8_t>(idType);
-          appServerSelectedDeviceCode = idType;
-        }
-        if (connectRequestCode >= 1 && connectRequestCode <= 1000000) appServerConnectRequestCode = connectRequestCode;
+      if (idType >= 1 && idType <= 255) {
+        appServerIdType = static_cast<uint8_t>(idType);
       }
       appServerAutoReconnect = autoReconnect;
     }
@@ -585,23 +608,21 @@ static void handleAppServerSendConnectRequest() {
     return;
   }
 
+  String deviceCode = "";
   String body = server.arg("plain");
   if (body.length() > 0) {
     DynamicJsonDocument doc(256);
     if (deserializeJson(doc, body) == DeserializationError::Ok) {
       int code = doc["connect_request_code"] | appServerConnectRequestCode;
-      int selectedDeviceCode = doc["selected_device_code"] | appServerSelectedDeviceCode;
-
-      if (isSupportedDeviceCode(selectedDeviceCode)) {
-        applySelectedDeviceCode(selectedDeviceCode);
-      }
+      deviceCode = doc["device_code"] | "";
       if (code >= 1 && code <= 1000000) {
         appServerConnectRequestCode = code;
       }
     }
   }
 
-  sendConnectionRequestPacket();
+  logAppServer("Send connect request: code=" + String(appServerConnectRequestCode) + " deviceCode=" + (deviceCode.length() ? deviceCode : "-"));
+  sendConnectionRequestPacket(deviceCode);
   appServerConnectionConfirmed = false;
 
   DynamicJsonDocument resp(256);
@@ -759,6 +780,14 @@ static void handleWifiScan() {
   server.sendHeader("Connection", "close");
 
   Serial.println("WiFi scan requested");
+  Serial.print("WiFi mode(before)=");
+  Serial.print((int)WiFi.getMode());
+  Serial.print(" STA.status=");
+  Serial.print((int)WiFi.status());
+  Serial.print(" STA.ip=");
+  Serial.print(WiFi.localIP());
+  Serial.print(" AP.ip=");
+  Serial.println(WiFi.softAPIP());
 
   wifi_mode_t currentMode = WiFi.getMode();
   if (currentMode == WIFI_AP) {
@@ -774,6 +803,7 @@ static void handleWifiScan() {
   WiFi.scanDelete();
   delay(50);
   WiFi.setSleep(false);
+  Serial.println("WiFi scan: setSleep(false), scanDelete()");
 
   // Trên ESP32, async scan đôi khi trả về -2 (WIFI_SCAN_FAILED) do race condition.
   // Ở đây ưu tiên scan đồng bộ nhưng giới hạn thời gian bằng max_ms_per_chan + retry.
@@ -783,6 +813,7 @@ static void handleWifiScan() {
   const int maxMsPerChanSlow = 450;   // retry chậm hơn để bắt mạng yếu
 
   // Attempt 1: active scan (passive=false)
+  Serial.println("WiFi scan attempt#1: active, showHidden=true, maxMsPerChan=" + String(maxMsPerChanFast));
   n = WiFi.scanNetworks(false, true, false, maxMsPerChanFast);
   if (n == WIFI_SCAN_FAILED) {
     Serial.println("WiFi scan failed (active), retry passive...");
@@ -791,6 +822,7 @@ static void handleWifiScan() {
     delay(40);
 
     // Attempt 2: passive scan (passive=true)
+    Serial.println("WiFi scan attempt#2: passive, showHidden=true, maxMsPerChan=" + String(maxMsPerChanSlow));
     n = WiFi.scanNetworks(false, true, true, maxMsPerChanSlow);
   }
 
@@ -800,6 +832,7 @@ static void handleWifiScan() {
     delay(180);
     WiFi.scanDelete();
     delay(50);
+    Serial.println("WiFi scan attempt#3: active, showHidden=true, maxMsPerChan=" + String(maxMsPerChanSlow));
     n = WiFi.scanNetworks(false, true, false, maxMsPerChanSlow);
   }
 
@@ -807,12 +840,16 @@ static void handleWifiScan() {
   Serial.println("Scan completed in " + String(scanDuration) + "ms, n=" + String(n));
 
   if (n == WIFI_SCAN_FAILED) {
+    Serial.println("WiFi scan failed (-2). Possible causes: antenna/EMI, WiFi sleep, AP+STA conflicts, weak signal, channel restrictions.");
     WiFi.scanDelete();
     server.send(200, "application/json", "{\"error\":\"Quét WiFi thất bại (-2). Hãy thử lại hoặc reboot thiết bị.\",\"networks\":[]}");
     return;
   }
 
   if (n <= 0) {
+    Serial.println("WiFi scan: no networks found (n<=0). Possible causes: signal too weak, 5GHz-only AP, hidden SSID only, scan blocked by environment.");
+    Serial.print("WiFi RSSI (if connected): ");
+    Serial.println(WiFi.RSSI());
     server.send(200, "application/json", "{\"networks\":[]}");
     WiFi.scanDelete();
     return;
@@ -824,6 +861,14 @@ static void handleWifiScan() {
   int maxNetworks = min(n, 12);
   for (int i = 0; i < maxNetworks; i++) {
     String ssid = WiFi.SSID(i);
+    Serial.print(" - ");
+    Serial.print(i);
+    Serial.print(": '");
+    Serial.print(ssid);
+    Serial.print("' RSSI=");
+    Serial.print(WiFi.RSSI(i));
+    Serial.print(" encType=");
+    Serial.println((int)WiFi.encryptionType(i));
     ssid.replace("\"", "");
     ssid.replace("\\", "");
     ssid.replace("\n", "");

@@ -272,7 +272,6 @@
         port: Number.isNaN(port) ? 0 : port,
         id_type: Number.isNaN(idType) ? APP_DEFAULT_DEVICE_CODE : idType,
         connect_request_code: Number.isNaN(connectRequestCode) ? APP_DEFAULT_DEVICE_CODE : connectRequestCode,
-        selected_device_code: appServerSelectedDeviceCode,
         auto_reconnect: autoReconnect
       };
     }
@@ -391,14 +390,20 @@
 
       if (!payload.ip) { msgEl.textContent = 'Vui lòng nhập IP server.'; return; }
       if (payload.port < 1 || payload.port > 65535) { msgEl.textContent = 'Port phải từ 1..65535.'; return; }
-      if (!APP_DEVICE_TYPE_CODE_SET.has(payload.selected_device_code)) { msgEl.textContent = 'Thiết bị chưa hợp lệ.'; return; }
+      if (payload.id_type < 1 || payload.id_type > 255) { msgEl.textContent = 'ID Type phải từ 1..255.'; return; }
 
       msgEl.textContent = 'Đang kết nối tới server...';
       try {
         const res = await fetch('/api/app-server/connect', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          // Kết nối chỉ gửi IP/Port/ID Type + auto_reconnect
+          body: JSON.stringify({
+            ip: payload.ip,
+            port: payload.port,
+            id_type: payload.id_type,
+            auto_reconnect: payload.auto_reconnect
+          })
         });
         const data = await res.json();
         msgEl.textContent = res.ok
@@ -414,6 +419,7 @@
     async function sendConnectRequestPacket() {
       const msgEl = document.getElementById('appServerMessage');
       const connectRequestCode = parseInt(document.getElementById('appServerConnectRequestCode')?.value || String(appServerSelectedDeviceCode), 10);
+      const deviceCode = (document.getElementById('appServerDeviceCode')?.value || '').trim();
 
       if (Number.isNaN(connectRequestCode) || connectRequestCode < 1 || connectRequestCode > 1000000) {
         msgEl.textContent = 'Connect Request Code phải từ 1..1000000.';
@@ -427,7 +433,7 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             connect_request_code: connectRequestCode,
-            selected_device_code: appServerSelectedDeviceCode
+            device_code: deviceCode
           })
         });
         const data = await res.json();
