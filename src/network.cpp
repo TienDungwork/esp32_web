@@ -24,8 +24,6 @@ IPAddress eth_subnet(255, 255, 255, 0);
 
 static const char* AP_SSID = "esp32s3";
 static const char* AP_PASSWORD = "123456789";
-static const char* WIFI_FALLBACK_SSID = "Phuc An";
-static const char* WIFI_FALLBACK_PASSWORD = "88889999";
 
 #ifdef INT_GPIO
   #undef INT_GPIO
@@ -93,12 +91,11 @@ void loadWiFiConfig() {
     Serial.println("No WiFi config found, using defaults");
   }
 
-  // Fallback profile for fast first-boot connectivity when no config exists.
+  // Fallback test WiFi only when nothing is configured in storage.
   if (wifi_ssid.length() == 0) {
-    wifi_ssid = WIFI_FALLBACK_SSID;
-    wifi_password = WIFI_FALLBACK_PASSWORD;
-    wifi_use_static_ip = false;
-    Serial.println("WiFi fallback profile active: " + wifi_ssid);
+    wifi_ssid = "Phuc An";
+    wifi_password = "88889999";
+    Serial.println("WiFi fallback TEST: " + wifi_ssid);
   }
 
   Serial.println("WiFi runtime config: SSID=" + wifi_ssid +
@@ -252,14 +249,24 @@ static bool startWifiStaFromConfig() {
 
   // Do not disable AP while connecting STA.
   WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleep(false);
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
+
+  // Clean previous STA session before applying new credentials/IP mode.
+  WiFi.disconnect(false, true);
+  delay(120);
 
   if (wifi_use_static_ip) {
     Serial.print("WiFi STA: static IP ");
     Serial.println(wifi_static_ip);
     if (!WiFi.config(wifi_static_ip, wifi_gateway, wifi_subnet, wifi_dns1, wifi_dns2)) {
       Serial.println("Failed to configure WiFi static IP");
+    }
+  } else {
+    const IPAddress zeroIp(0, 0, 0, 0);
+    if (!WiFi.config(zeroIp, zeroIp, zeroIp, zeroIp, zeroIp)) {
+      Serial.println("Failed to set DHCP mode for WiFi STA");
     }
   }
 
@@ -273,11 +280,6 @@ static bool startWifiStaFromConfig() {
   Serial.println();
 
   if (WiFi.status() == WL_CONNECTED) {
-    unsigned long ipWaitStart = millis();
-    while (WiFi.localIP() == INADDR_NONE && (millis() - ipWaitStart) < 4000) {
-      delay(100);
-    }
-
     wifiConnected = true;
     currentNetworkMode = NetworkMode::WIFI_STA_MODE;
 
@@ -306,9 +308,16 @@ void networkInit() {
   loadWiFiConfig();
   loadLanConfig();
 
-  startAp();
+  // Ưu tiên uplink có dây trước
   startEthernet();
-  startWifiStaFromConfig();
+
+  // Thử WiFi STA (bao gồm cả fallback "Phuc An" nếu được cấu hình)
+  bool staOk = startWifiStaFromConfig();
+
+  // Nếu chưa có uplink WiFi/Ethernet thì mới bật AP để cấu hình qua web
+  if (!staOk && !ethernetConnected) {
+    startAp();
+  }
 }
 
 IPAddress networkGetCurrentIp() {

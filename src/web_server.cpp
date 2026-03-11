@@ -764,39 +764,38 @@ static void handleWifiScan() {
   if (currentMode == WIFI_AP) {
     Serial.println("WiFi scan: switching AP -> AP+STA");
     WiFi.mode(WIFI_AP_STA);
-    delay(120);
+    delay(400);
   } else if (currentMode == WIFI_OFF) {
     Serial.println("WiFi scan: switching OFF -> AP+STA");
     WiFi.mode(WIFI_AP_STA);
-    delay(120);
+    delay(400);
   }
 
-  // Cleanup previous scan result to avoid stale state.
   WiFi.scanDelete();
-  delay(20);
-
+  delay(50);
   WiFi.setSleep(false);
 
-  unsigned long scanStart = millis();
-  int n = WIFI_SCAN_FAILED;
-  for (int attempt = 0; attempt < 3; attempt++) {
-    // Active scan is generally more reliable on ESP32-S3 while AP+STA is enabled.
-    n = WiFi.scanNetworks(false, true, false, 600);
-    if (n != WIFI_SCAN_FAILED) {
-      break;
-    }
-    Serial.println("WiFi scan failed, retry attempt " + String(attempt + 1));
-    delay(200);
-    WiFi.mode(WIFI_AP_STA);
-    delay(100);
-    WiFi.scanDelete();
-  }
-  unsigned long scanDuration = millis() - scanStart;
-  Serial.println("Scan completed in " + String(scanDuration) + "ms");
-
+  // Async scan: không block quá lâu, tránh timeout HTTP
+  int n = WiFi.scanNetworks(true, true, false, 200);
   if (n == WIFI_SCAN_FAILED) {
-    server.send(500, "application/json", "{\"error\":\"WiFi scan failed\",\"networks\":[]}");
+    Serial.println("WiFi scan start failed (async)");
+    server.send(200, "application/json", "{\"error\":\"Không khởi động được quét WiFi\",\"networks\":[]}");
+    return;
+  }
+
+  unsigned long scanStart = millis();
+  const unsigned long scanTimeoutMs = 12000;
+  while (WiFi.scanComplete() == WIFI_SCAN_RUNNING && (millis() - scanStart) < scanTimeoutMs) {
+    delay(80);
+    yield();
+  }
+  n = WiFi.scanComplete();
+  unsigned long scanDuration = millis() - scanStart;
+  Serial.println("Scan completed in " + String(scanDuration) + "ms, n=" + String(n));
+
+  if (n == WIFI_SCAN_FAILED || n == WIFI_SCAN_RUNNING) {
     WiFi.scanDelete();
+    server.send(200, "application/json", "{\"error\":\"Quét WiFi thất bại hoặc hết thời gian. Thử lại sau.\",\"networks\":[]}");
     return;
   }
 
@@ -885,12 +884,22 @@ static void handleWifiConnect() {
 
   // Start from AP+STA for provisioning connect flow.
   WiFi.mode(WIFI_AP_STA);
+  WiFi.setSleep(false);
   WiFi.setAutoReconnect(true);
   WiFi.persistent(true);
+
+  // Always reset previous STA state so reconnecting with same/new SSID is clean.
+  WiFi.disconnect(false, true);
+  delay(150);
 
   if (wifi_use_static_ip) {
     if (!WiFi.config(wifi_static_ip, wifi_gateway, wifi_subnet, wifi_dns1, wifi_dns2)) {
       Serial.println("Failed to configure static IP");
+    }
+  } else {
+    const IPAddress zeroIp(0, 0, 0, 0);
+    if (!WiFi.config(zeroIp, zeroIp, zeroIp, zeroIp, zeroIp)) {
+      Serial.println("Failed to set DHCP mode");
     }
   }
 
@@ -913,11 +922,6 @@ static void handleWifiConnect() {
   }
 
   if (connected) {
-    unsigned long ipWaitStart = millis();
-    while (WiFi.localIP() == INADDR_NONE && (millis() - ipWaitStart) < 4000) {
-      delay(100);
-    }
-
     wifiConnected = true;
     currentNetworkMode = NetworkMode::WIFI_STA_MODE;
 

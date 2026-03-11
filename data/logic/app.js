@@ -292,25 +292,34 @@
       document.getElementById('appServerAutoReconnect').checked = !!data.auto_reconnect;
     }
 
-    function setAppServerStatusText(connected, lastError = '') {
+    function setAppServerStatusText(connected, confirmed, lastError = '') {
       const stateEl = document.getElementById('appServerConnState');
       const bannerEl = document.getElementById('serverStatusBanner');
       if (!stateEl) return;
 
       if (bannerEl) {
-        bannerEl.classList.remove('connected', 'disconnected');
-        bannerEl.classList.add(connected ? 'connected' : 'disconnected');
+        bannerEl.classList.remove('connected', 'disconnected', 'tcp-only');
+        if (connected && confirmed) {
+          bannerEl.classList.add('connected');
+        } else if (connected && !confirmed) {
+          bannerEl.classList.add('tcp-only');
+        } else {
+          bannerEl.classList.add('disconnected');
+        }
       }
 
-      if (connected) {
-        stateEl.textContent = 'Đã kết nối';
-        stateEl.style.color = '#198754';
+      if (connected && confirmed) {
+        stateEl.textContent = 'Đã kết nối server và đã xác nhận';
+        stateEl.style.color = '';
+      } else if (connected && !confirmed) {
+        stateEl.textContent = 'Đã kết nối TCP, đang chờ xác nhận từ server...';
+        stateEl.style.color = '';
       } else {
-        stateEl.textContent = lastError ? `Chưa kết nối (${lastError})` : 'Chưa kết nối';
-        stateEl.style.color = '#dc3545';
+        stateEl.textContent = lastError ? `Chưa kết nối: ${lastError}` : 'Chưa kết nối';
+        stateEl.style.color = '';
       }
 
-      updateDeviceTypeConnectionIndicators(connected, appServerSelectedDeviceCode);
+      updateDeviceTypeConnectionIndicators(connected && confirmed, appServerSelectedDeviceCode);
     }
 
     async function loadAppServerConfig() {
@@ -338,10 +347,11 @@
         if (APP_DEVICE_TYPE_CODE_SET.has(selectedCode)) {
           selectAppDeviceType(selectedCode, false);
         }
+        const connected = !!data.connected;
         const confirmed = !!data.connection_confirmed;
-        setAppServerStatusText(confirmed, data.last_error || '');
+        setAppServerStatusText(connected, confirmed, data.last_error || '');
       } catch (_) {
-        setAppServerStatusText(false, 'status unavailable');
+        setAppServerStatusText(false, false, 'không đọc được trạng thái');
       }
     }
 
