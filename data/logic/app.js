@@ -263,13 +263,13 @@
       const ip = document.getElementById('appServerIp')?.value?.trim() || '';
       const port = parseInt(document.getElementById('appServerPort')?.value || '0', 10);
       const idType = parseInt(document.getElementById('appServerIdType')?.value || String(APP_DEFAULT_DEVICE_CODE), 10);
-      const connectRequestCode = parseInt(document.getElementById('appServerConnectRequestCode')?.value || String(APP_DEFAULT_DEVICE_CODE), 10);
       const autoReconnect = !!document.getElementById('appServerAutoReconnect')?.checked;
       return {
         ip,
         port: Number.isNaN(port) ? 0 : port,
         id_type: Number.isNaN(idType) ? APP_DEFAULT_DEVICE_CODE : idType,
-        connect_request_code: Number.isNaN(connectRequestCode) ? APP_DEFAULT_DEVICE_CODE : connectRequestCode,
+        // Code=1 là cố định theo bảng protocol (API_CONNECT)
+        connect_request_code: 1,
         // Mã thiết bị được chọn trong bảng (gửi khi bấm "Gửi yêu cầu")
         selected_device_code: appServerSelectedDeviceCode,
         auto_reconnect: autoReconnect
@@ -287,7 +287,6 @@
         selectAppDeviceType(APP_DEFAULT_DEVICE_CODE, false);
       }
       document.getElementById('appServerIdType').value = data.id_type || appServerSelectedDeviceCode;
-      document.getElementById('appServerConnectRequestCode').value = data.connect_request_code || appServerSelectedDeviceCode;
       document.getElementById('appServerAutoReconnect').checked = !!data.auto_reconnect;
     }
 
@@ -418,14 +417,8 @@
 
     async function sendConnectRequestPacket() {
       const msgEl = document.getElementById('appServerMessage');
-      const connectRequestCode = parseInt(document.getElementById('appServerConnectRequestCode')?.value || String(appServerSelectedDeviceCode), 10);
-
-      if (Number.isNaN(connectRequestCode) || connectRequestCode < 1 || connectRequestCode > 1000000) {
-        msgEl.textContent = 'Connect Request Code phải từ 1..1000000.';
-        return;
-      }
-
-      msgEl.textContent = `Đang gửi gói yêu cầu kết nối (Code=${connectRequestCode})...`;
+      const connectRequestCode = 1;
+      msgEl.textContent = `Đang gửi gói yêu cầu kết nối (Code=1)...`;
       try {
         const res = await fetch('/api/app-server/send-connect-request', {
           method: 'POST',

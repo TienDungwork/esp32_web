@@ -189,8 +189,7 @@
 
             <div class="device-type-card">
               <h3>Bảng thiết bị (tự gán ID Type)</h3>
-              <p class="device-type-subtitle">Chọn thiết bị để tự động gán <b>ID Type</b> và <b>Connect Request
-                  Code</b>.</p>
+              <p class="device-type-subtitle">Chọn thiết bị để tự động gán <b>ID Type</b> (DeviceType).</p>
               <div class="device-type-table-wrap">
                 <table class="device-type-table" id="deviceTypeTable">
                   <thead>
@@ -220,8 +219,8 @@
                 <input type="number" id="appServerIdType" placeholder="1" min="1" max="255">
               </div>
               <div class="form-group">
-                <label>Request Code:</label>
-                <input type="number" id="appServerConnectRequestCode" placeholder="1" min="1" max="1000000">
+                <label>Code:</label>
+                <input type="text" value="1 (API_CONNECT)" readonly>
               </div>
             </div>
 
@@ -244,9 +243,6 @@
               </button>
               <button class="btn btn-danger" onclick="disconnectAppServer()">
                 <i class="fas fa-unlink"></i> Ngắt kết nối
-              </button>
-              <button class="btn btn-primary" onclick="sendConnectRequestPacket()">
-                <i class="fas fa-paper-plane"></i> Gửi yêu cầu
               </button>
               <button class="btn btn-secondary" onclick="refreshAppServerStatus()">
                 <i class="fas fa-sync-alt"></i> Làm mới
