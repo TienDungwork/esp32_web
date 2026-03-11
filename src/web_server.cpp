@@ -111,9 +111,13 @@ static String nowIso8601IfValid() {
 
   struct tm timeInfo;
   gmtime_r(&now, &timeInfo);
-  char buf[25];
-  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &timeInfo);
-  return String(buf);
+  char buf[40];
+  // Thêm millisecond để match format server hay dùng: 2026-02-27T10:15:30.123Z
+  strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &timeInfo);
+  uint16_t ms = (uint16_t)(millis() % 1000);
+  char out[48];
+  snprintf(out, sizeof(out), "%s.%03uZ", buf, (unsigned)ms);
+  return String(out);
 }
 
 static bool writePacketToAppServer(int code,
@@ -277,22 +281,54 @@ static bool handleAppServerPacket(const String& packetJson, String* errorMessage
 }
 
 static void sendConnectionRequestPacket() {
-  DynamicJsonDocument deviceInfo(768);
-  deviceInfo["model"] = "ESP32-S3";
-  deviceInfo["firmwareVersion"] = APP_FIRMWARE_VERSION;
-  deviceInfo["firmwareBuild"] = getFirmwareBuildStamp();
-  deviceInfo["networkMode"] = networkGetModeString();
-  deviceInfo["ip"] = networkGetCurrentIp().toString();
-  deviceInfo["mac"] = WiFi.macAddress();
-
+  // Match gói theo ảnh bạn gửi:
+  // {
+  //   "Code": <connect_request_code>,
+  //   "Message": "{\"DeviceType\":<id_type>}",
+  //   "DeviceType": <id_type>,
+  //   "Status": 1,
+  //   "CreatedAt": "YYYY-MM-DDTHH:mm:ss.mmmZ",
+  //   "IndexInPacket": 2
+  // }
+  DynamicJsonDocument msgDoc(64);
+  msgDoc["DeviceType"] = static_cast<int>(appServerIdType);
   String message;
-  serializeJson(deviceInfo, message);
-  if (!writePacketToAppServer(appServerConnectRequestCode, message, false, 0, false, 0)) {
-    logAppServer("Failed to send connection request packet");
+  serializeJson(msgDoc, message);
+
+  const int status = 1;
+  const int indexInPacket = 2;
+  String createdAt = nowIso8601IfValid();
+
+  if (!appServerClient.connected()) {
+    appServerLastError = "Socket is not connected";
+    logAppServer("Cannot send connect request: socket not connected");
     return;
   }
 
-  logAppServer("Sent connection request packet (Code=" + String(appServerConnectRequestCode) + ", selected_device_code=" + String(appServerSelectedDeviceCode) + ")");
+  DynamicJsonDocument doc(384);
+  doc["Code"] = appServerConnectRequestCode;
+  doc["Message"] = message;
+  doc["DeviceType"] = static_cast<int>(appServerIdType);
+  doc["Status"] = status;
+  if (createdAt.length() > 0) doc["CreatedAt"] = createdAt;
+  doc["IndexInPacket"] = indexInPacket;
+
+  String out;
+  serializeJson(doc, out);
+  out += "\n";
+
+  size_t written = appServerClient.print(out);
+  appServerLastTxAtMs = millis();
+  appServerWaitingForResponse = true;
+
+  if (written != out.length()) {
+    appServerLastError = "Write packet failed";
+    logAppServer("TX connect-request failed (wrote " + String(written) + "/" + String(out.length()) + " bytes)");
+    return;
+  }
+
+  logAppServer("TX connect-request ok bytes=" + String(out.length()));
+  logAppServer("TX payload: " + out);
 }
 
 static void loadAppServerConfig() {
