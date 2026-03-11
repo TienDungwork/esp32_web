@@ -236,9 +236,7 @@
 
       appServerSelectedDeviceCode = deviceCode;
       const idTypeInput = document.getElementById('appServerIdType');
-      const connectCodeInput = document.getElementById('appServerConnectRequestCode');
       if (idTypeInput) idTypeInput.value = String(deviceCode);
-      if (connectCodeInput && syncCode) connectCodeInput.value = String(deviceCode);
 
       document.querySelectorAll('#deviceTypeTable tbody tr').forEach(row => {
         const rowCode = parseInt(row.getAttribute('data-device-code') || '0', 10);

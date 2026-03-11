@@ -104,7 +104,6 @@ static void applySelectedDeviceCode(int code) {
   if (!isSupportedDeviceCode(code)) return;
   appServerSelectedDeviceCode = code;
   appServerIdType = static_cast<uint8_t>(code);
-  appServerConnectRequestCode = code;
 }
 
 static String nowIso8601IfValid() {
