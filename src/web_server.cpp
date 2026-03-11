@@ -34,6 +34,7 @@ static String appServerRxBuffer = "";
 static bool appServerConnectionConfirmed = false;
 static int appServerLastResponseStatus = -1;
 static int appServerLastResponseCode = 0;
+static bool ntpConfigured = false;
 
 static void logAppServer(const String& msg) {
   Serial.println("[AppServer] " + msg);
@@ -121,6 +122,29 @@ static String nowIso8601IfValid() {
   char out[48];
   snprintf(out, sizeof(out), "%s.%03uZ", buf, (unsigned)ms);
   return String(out);
+}
+
+static bool ensureTimeSynced(unsigned long maxWaitMs) {
+  // Chỉ sync khi có uplink thật sự, tránh chờ vô ích khi AP-only.
+  if (!hasNetworkUplink()) return false;
+
+  if (!ntpConfigured) {
+    // GMT+0, DST=0. Server thường dùng ISO8601 Zulu.
+    configTime(0, 0, "pool.ntp.org", "time.nist.gov", "time.google.com");
+    ntpConfigured = true;
+    logAppServer("NTP configured, waiting time sync...");
+  }
+
+  unsigned long start = millis();
+  while (millis() - start < maxWaitMs) {
+    if (time(nullptr) >= 1700000000) {
+      logAppServer("NTP time synced");
+      return true;
+    }
+    delay(50);
+  }
+  logAppServer("NTP sync timeout (" + String(maxWaitMs) + "ms)");
+  return false;
 }
 
 static bool writePacketToAppServer(int code,
@@ -300,7 +324,13 @@ static void sendConnectionRequestPacket() {
 
   const int status = 1;
   const int indexInPacket = 2;
+
+  // Nếu chưa có giờ hợp lệ, thử đồng bộ NTP trước khi gửi.
   String createdAt = nowIso8601IfValid();
+  if (createdAt.length() == 0) {
+    ensureTimeSynced(1500);
+    createdAt = nowIso8601IfValid();
+  }
 
   if (!appServerClient.connected()) {
     appServerLastError = "Socket is not connected";
@@ -313,7 +343,11 @@ static void sendConnectionRequestPacket() {
   doc["Message"] = message;
   doc["DeviceType"] = static_cast<int>(appServerIdType);
   doc["Status"] = status;
-  if (createdAt.length() > 0) doc["CreatedAt"] = createdAt;
+  if (createdAt.length() > 0) {
+    doc["CreatedAt"] = createdAt;
+  } else {
+    logAppServer("CreatedAt omitted: time not synced yet");
+  }
   doc["IndexInPacket"] = indexInPacket;
 
   String out;
