@@ -30,7 +30,7 @@ static unsigned long appServerLastConnectedAtMs = 0;
 static unsigned long appServerLastRxAtMs = 0;
 static unsigned long appServerLastTxAtMs = 0;
 static bool appServerWaitingForResponse = false;
-static bool appServerConnectSent = false;  // giống tconnect: chỉ gửi Code=1 một lần sau khi TCP connect
+static bool appServerConnectSent = false;  // chỉ true sau khi user bấm gửi gói yêu cầu kết nối
 static String appServerLastError = "";
 static String appServerRxBuffer = "";
 static bool appServerConnectionConfirmed = false;
@@ -565,12 +565,7 @@ static bool appServerConnectNow() {
   appServerWaitingForResponse = false;
   appServerConnectSent = false;
   logAppServer("TCP connected. Local=" + appServerClient.localIP().toString() + ":" + String(appServerClient.localPort()));
-
-  // tconnect behavior: tự gửi gói Code=1 ngay sau khi connect TCP thành công
-  delay(120);
-  sendConnectionRequestPacket(); // giờ sẽ gửi nhiều DeviceType giống tconnect
-  appServerConnectSent = true;
-  logAppServer("Auto-sent connect packets (Code=1, group by selected DeviceType)");
+  logAppServer("Waiting manual connect request packet");
   return true;
 }
 
@@ -586,13 +581,6 @@ static void appServerDisconnect() {
 
 static void appServerLoop() {
   if (appServerClient.connected()) {
-    // Failsafe: nếu vì lý do nào đó chưa gửi connect packet sau khi connect thì gửi một lần
-    if (!appServerConnectSent && (millis() - appServerLastConnectedAtMs) > 250) {
-      sendConnectionRequestPacket(); // giờ sẽ gửi nhiều DeviceType giống tconnect
-      appServerConnectSent = true;
-      logAppServer("Auto-sent connect packets (late) (Code=1)");
-    }
-
     // Timeout chờ phản hồi sau khi gửi yêu cầu
     if (appServerWaitingForResponse && !appServerConnectionConfirmed) {
       const unsigned long timeoutMs = 5000;
@@ -729,23 +717,26 @@ static void handleAppServerConnect() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
 
   // Optional payload to save and connect in one action.
+  // For connect action, only IP/Port are required.
   String body = server.arg("plain");
   if (body.length() > 0) {
     DynamicJsonDocument doc(512);
     DeserializationError err = deserializeJson(doc, body);
     if (err == DeserializationError::Ok) {
-      String ip = doc["ip"].as<String>();
-      int port = doc["port"] | 0;
-      int idType = doc["id_type"] | 1;
-      bool autoReconnect = doc["auto_reconnect"] | true;
-
-      ip.trim();
-      if (ip.length() > 0) appServerIp = ip;
-      if (port >= 1 && port <= 65535) appServerPort = static_cast<uint16_t>(port);
-      if (idType >= 1 && idType <= 255) {
-        appServerIdType = static_cast<uint8_t>(idType);
+      if (doc.containsKey("ip")) {
+        String ip = doc["ip"].as<String>();
+        ip.trim();
+        if (ip.length() > 0) appServerIp = ip;
       }
-      appServerAutoReconnect = autoReconnect;
+
+      if (doc.containsKey("port")) {
+        int port = doc["port"] | 0;
+        if (port >= 1 && port <= 65535) appServerPort = static_cast<uint16_t>(port);
+      }
+
+      if (doc.containsKey("auto_reconnect")) {
+        appServerAutoReconnect = doc["auto_reconnect"] | true;
+      }
     }
   }
 
@@ -802,6 +793,7 @@ static void handleAppServerSendConnectRequest() {
   appServerConnectRequestCode = 1;
   logAppServer("Send connect request: code=1 selected_device_code=" + String(appServerSelectedDeviceCode));
   sendConnectionRequestPacket();
+  appServerConnectSent = true;
   appServerConnectionConfirmed = false;
 
   DynamicJsonDocument resp(256);

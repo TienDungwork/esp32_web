@@ -389,19 +389,16 @@
 
       if (!payload.ip) { msgEl.textContent = 'Vui lòng nhập IP server.'; return; }
       if (payload.port < 1 || payload.port > 65535) { msgEl.textContent = 'Port phải từ 1..65535.'; return; }
-      if (payload.id_type < 1 || payload.id_type > 255) { msgEl.textContent = 'ID Type phải từ 1..255.'; return; }
 
       msgEl.textContent = 'Đang kết nối tới server...';
       try {
         const res = await fetch('/api/app-server/connect', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          // Kết nối chỉ gửi IP/Port/ID Type + auto_reconnect
+          // Kết nối TCP chỉ cần IP + Port.
           body: JSON.stringify({
             ip: payload.ip,
-            port: payload.port,
-            id_type: payload.id_type,
-            auto_reconnect: payload.auto_reconnect
+            port: payload.port
           })
         });
         const data = await res.json();
