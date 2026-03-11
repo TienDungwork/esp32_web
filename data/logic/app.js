@@ -295,28 +295,33 @@
     function setAppServerStatusText(connected, confirmed, lastError = '') {
       const stateEl = document.getElementById('appServerConnState');
       const bannerEl = document.getElementById('serverStatusBanner');
+      const inlineStateEl = document.getElementById('appServerConnStateInline');
+      const inlineDotEl = document.getElementById('appServerConnDotInline');
       if (!stateEl) return;
 
       if (bannerEl) {
         bannerEl.classList.remove('connected', 'disconnected', 'tcp-only');
-        if (connected && confirmed) {
+        if (connected) {
           bannerEl.classList.add('connected');
-        } else if (connected && !confirmed) {
-          bannerEl.classList.add('tcp-only');
         } else {
           bannerEl.classList.add('disconnected');
         }
       }
 
-      if (connected && confirmed) {
-        stateEl.textContent = 'Đã kết nối server và đã xác nhận';
-        stateEl.style.color = '';
-      } else if (connected && !confirmed) {
-        stateEl.textContent = 'Đã kết nối TCP, đang chờ xác nhận từ server...';
+      if (connected) {
+        stateEl.textContent = confirmed ? 'Đã kết nối server và đã xác nhận' : 'Đã kết nối server';
         stateEl.style.color = '';
       } else {
         stateEl.textContent = lastError ? `Chưa kết nối: ${lastError}` : 'Chưa kết nối';
         stateEl.style.color = '';
+      }
+
+      if (inlineStateEl) {
+        inlineStateEl.textContent = connected ? 'Đã kết nối server' : (lastError || 'Chưa kết nối');
+        inlineStateEl.className = 'app-server-inline-status ' + (connected ? 'connected' : 'disconnected');
+      }
+      if (inlineDotEl) {
+        inlineDotEl.className = 'app-server-inline-dot ' + (connected ? 'connected' : 'disconnected');
       }
 
       updateDeviceTypeConnectionIndicators(connected && confirmed, appServerSelectedDeviceCode);

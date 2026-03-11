@@ -775,27 +775,40 @@ static void handleWifiScan() {
   delay(50);
   WiFi.setSleep(false);
 
-  // Async scan: không block quá lâu, tránh timeout HTTP
-  int n = WiFi.scanNetworks(true, true, false, 200);
+  // Trên ESP32, async scan đôi khi trả về -2 (WIFI_SCAN_FAILED) do race condition.
+  // Ở đây ưu tiên scan đồng bộ nhưng giới hạn thời gian bằng max_ms_per_chan + retry.
+  unsigned long scanStart = millis();
+  int n = WIFI_SCAN_FAILED;
+  const int maxMsPerChanFast = 250;   // ~13 kênh => khoảng vài giây
+  const int maxMsPerChanSlow = 450;   // retry chậm hơn để bắt mạng yếu
+
+  // Attempt 1: active scan (passive=false)
+  n = WiFi.scanNetworks(false, true, false, maxMsPerChanFast);
   if (n == WIFI_SCAN_FAILED) {
-    Serial.println("WiFi scan start failed (async)");
-    server.send(200, "application/json", "{\"error\":\"Không khởi động được quét WiFi\",\"networks\":[]}");
-    return;
+    Serial.println("WiFi scan failed (active), retry passive...");
+    delay(120);
+    WiFi.scanDelete();
+    delay(40);
+
+    // Attempt 2: passive scan (passive=true)
+    n = WiFi.scanNetworks(false, true, true, maxMsPerChanSlow);
   }
 
-  unsigned long scanStart = millis();
-  const unsigned long scanTimeoutMs = 12000;
-  while (WiFi.scanComplete() == WIFI_SCAN_RUNNING && (millis() - scanStart) < scanTimeoutMs) {
-    delay(80);
-    yield();
+  // One more retry active if still failed
+  if (n == WIFI_SCAN_FAILED) {
+    Serial.println("WiFi scan failed (passive), retry active...");
+    delay(180);
+    WiFi.scanDelete();
+    delay(50);
+    n = WiFi.scanNetworks(false, true, false, maxMsPerChanSlow);
   }
-  n = WiFi.scanComplete();
+
   unsigned long scanDuration = millis() - scanStart;
   Serial.println("Scan completed in " + String(scanDuration) + "ms, n=" + String(n));
 
-  if (n == WIFI_SCAN_FAILED || n == WIFI_SCAN_RUNNING) {
+  if (n == WIFI_SCAN_FAILED) {
     WiFi.scanDelete();
-    server.send(200, "application/json", "{\"error\":\"Quét WiFi thất bại hoặc hết thời gian. Thử lại sau.\",\"networks\":[]}");
+    server.send(200, "application/json", "{\"error\":\"Quét WiFi thất bại (-2). Hãy thử lại hoặc reboot thiết bị.\",\"networks\":[]}");
     return;
   }
 
