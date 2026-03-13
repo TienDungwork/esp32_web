@@ -21,7 +21,6 @@ static WiFiClient appServerClient;
 static String appServerIp = "";
 static uint16_t appServerPort = 0;
 static uint8_t appServerIdType = 1;
-static int appServerConnectRequestCode = 1;
 static int appServerSelectedDeviceCode = 1;
 static bool appServerAutoReconnect = true;
 static bool appServerEnabled = false;
@@ -49,26 +48,18 @@ static String escapeJsonString(String input) {
 }
 
 static bool sendConnectPacketForDeviceType(int deviceType) {
-  // Theo WeighAll.Fw.Device:
-  // {"Code":1,"Message":"<escaped DeviceInfo JSON>","Status":0,"DeviceType":<int>,"CreatedAt":"0001-01-01T00:00:00","IndexInPacket":0}<EOF>
+  // Packet connect tối giản theo yêu cầu:
+  // {"Code":1,"Message":"{\"DeviceType\":<int>}","DeviceType":<int>,"CreatedAt":"0001-01-01T00:00:00","IndexInPacket":0}<EOF>
   if (!appServerClient.connected()) return false;
 
-  DynamicJsonDocument info(256);
-  info["actived"] = false;
-  info["data_updated_at"] = "0001-01-01T00:00:00";
-  info["working_updated_at"] = "0001-01-01T00:00:00";
-  info["is_online"] = true;
-  info["no_pong_consecutive_num"] = 0;
-  info["connection_percentage"] = 100;
+  DynamicJsonDocument info(64);
   info["DeviceType"] = deviceType;
-
   String infoJson;
   serializeJson(info, infoJson);
 
-  DynamicJsonDocument doc(768);
+  DynamicJsonDocument doc(256);
   doc["Code"] = 1;
   doc["Message"] = infoJson;           // ArduinoJson tự escape đúng 1 lần
-  doc["Status"] = 0;
   doc["DeviceType"] = deviceType;
   doc["CreatedAt"] = "0001-01-01T00:00:00";
   doc["IndexInPacket"] = 0;
@@ -91,31 +82,18 @@ static bool sendConnectPacketForDeviceType(int deviceType) {
   return true;
 }
 
-static void sendAllDeviceConnectStatesLikeTconnect() {
-  // Gửi nhiều gói Code=1 giống tconnect, tùy theo nhóm thiết bị (vào/ra/loa)
-  int selected = appServerSelectedDeviceCode;
-
-  // Nhóm vào
-  static const int enterList[] = {1, 3, 4, 5, 6, 7, 10, 11, 102};
-  // Nhóm ra
-  static const int exitList[]  = {51, 53, 54, 55, 56, 57, 102};
-  // Loa
-  static const int speakerList[] = {102};
-
-  const int* list = enterList;
-  int count = (int)(sizeof(enterList) / sizeof(enterList[0]));
-  if (selected >= 51 && selected <= 61) {
-    list = exitList;
-    count = (int)(sizeof(exitList) / sizeof(exitList[0]));
-  } else if (selected == 102) {
-    list = speakerList;
-    count = (int)(sizeof(speakerList) / sizeof(speakerList[0]));
+static void sendConnectionRequestPacket() {
+  if (!appServerClient.connected()) {
+    appServerLastError = "Socket is not connected";
+    appServerConnectionConfirmed = false;
+    logAppServer("Cannot send connect request: socket not connected");
+    return;
   }
 
-  logAppServer("Auto-send connect list count=" + String(count) + " selected_device_code=" + String(selected));
-  for (int i = 0; i < count; i++) {
-    sendConnectPacketForDeviceType(list[i]);
-    delay(30);
+  int deviceType = appServerSelectedDeviceCode;
+  logAppServer("Send connect request Code=1 DeviceType=" + String(deviceType));
+  if (!sendConnectPacketForDeviceType(deviceType)) {
+    logAppServer("Send connect request failed");
   }
 }
 
@@ -377,6 +355,10 @@ static bool handleAppServerPacket(const String& packetJson, String* errorMessage
 
   // APP -> Controller dispatch theo bảng Code (WeighAll)
   switch (code) {
+    case 1:   // Connect ACK/heartbeat payload from app server
+    case 2:   // Ping/Pong payload from app server
+      return true;
+
     case 201:  // LED
       return handleLedScreenControlMessage(message, errorMessage);
 
@@ -450,20 +432,10 @@ static bool handleAppServerPacket(const String& packetJson, String* errorMessage
   return false;
 }
 
-static void sendConnectionRequestPacket() {
-  if (!appServerClient.connected()) {
-    appServerLastError = "Socket is not connected";
-    logAppServer("Cannot send connect request: socket not connected");
-    return;
-  }
-  sendAllDeviceConnectStatesLikeTconnect();
-}
-
 static void loadAppServerConfig() {
   appServerIp = "";
   appServerPort = 0;
   appServerIdType = 1;
-  appServerConnectRequestCode = 1;
   appServerSelectedDeviceCode = 1;
   appServerAutoReconnect = true;
   appServerEnabled = false;
@@ -485,13 +457,10 @@ static void loadAppServerConfig() {
     applySelectedDeviceCode(selectedCode);
   } else {
     int idType = doc["id_type"] | 1;
-    int connectRequestCode = doc["connect_request_code"] | 1;
 
     if (idType < 1 || idType > 255) idType = 1;
-    if (connectRequestCode < 1 || connectRequestCode > 1000000) connectRequestCode = idType;
 
     appServerIdType = static_cast<uint8_t>(idType);
-    appServerConnectRequestCode = connectRequestCode;
     appServerSelectedDeviceCode = idType;
   }
   appServerAutoReconnect = doc["auto_reconnect"] | true;
@@ -503,7 +472,6 @@ static void saveAppServerConfig() {
   doc["ip"] = appServerIp;
   doc["port"] = appServerPort;
   doc["id_type"] = appServerIdType;
-  doc["connect_request_code"] = appServerConnectRequestCode;
   doc["selected_device_code"] = appServerSelectedDeviceCode;
   doc["auto_reconnect"] = appServerAutoReconnect;
   doc["enabled"] = appServerEnabled;
@@ -563,9 +531,13 @@ static bool appServerConnectNow() {
   appServerLastResponseStatus = -1;
   appServerLastResponseCode = 0;
   appServerWaitingForResponse = false;
-  appServerConnectSent = false;
   logAppServer("TCP connected. Local=" + appServerClient.localIP().toString() + ":" + String(appServerClient.localPort()));
-  logAppServer("Waiting manual connect request packet");
+  // Nếu trước đó user đã gửi yêu cầu kết nối (appServerConnectSent=true),
+  // thì khi reconnect sẽ tự động gửi lại gói Code=1.
+  if (appServerConnectSent) {
+    logAppServer("Auto-resend connect request after reconnect");
+    sendConnectionRequestPacket();
+  }
   return true;
 }
 
@@ -642,7 +614,6 @@ static void handleAppServerConfigGet() {
   doc["ip"] = appServerIp;
   doc["port"] = appServerPort;
   doc["id_type"] = appServerIdType;
-  doc["connect_request_code"] = appServerConnectRequestCode;
   doc["selected_device_code"] = appServerSelectedDeviceCode;
   doc["auto_reconnect"] = appServerAutoReconnect;
   doc["enabled"] = appServerEnabled;
@@ -671,7 +642,6 @@ static void handleAppServerConfigPost() {
   String ip = doc["ip"].as<String>();
   int port = doc["port"] | 0;
   int idType = doc["id_type"] | 1;
-  int connectRequestCode = doc["connect_request_code"] | 1;
   int selectedDeviceCode = doc["selected_device_code"] | 0;
   bool autoReconnect = doc["auto_reconnect"] | true;
   bool enabled = doc["enabled"] | false;
@@ -689,8 +659,6 @@ static void handleAppServerConfigPost() {
     server.send(400, "application/json", "{\"error\":\"id_type must be 1..255\"}");
     return;
   }
-  // Protocol cố định: connect_request_code = 1 (API_CONNECT)
-  (void)connectRequestCode;
 
   appServerIp = ip;
   appServerPort = static_cast<uint16_t>(port);
@@ -698,7 +666,6 @@ static void handleAppServerConfigPost() {
     applySelectedDeviceCode(selectedDeviceCode);
   } else {
     appServerIdType = static_cast<uint8_t>(idType);
-    appServerConnectRequestCode = 1;
     appServerSelectedDeviceCode = idType;
   }
   appServerAutoReconnect = autoReconnect;
@@ -747,7 +714,7 @@ static void handleAppServerConnect() {
   DynamicJsonDocument resp(384);
   resp["success"] = ok;
   resp["connected"] = appServerClient.connected();
-  resp["message"] = ok ? "Connected to app server" : "Connect failed";
+  resp["message"] = ok ? "Connected to app server (Code=1 auto-sent)" : "Connect failed";
   resp["error"] = appServerLastError;
   String out;
   serializeJson(resp, out);
@@ -772,26 +739,23 @@ static void handleAppServerDisconnect() {
 static void handleAppServerSendConnectRequest() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
 
-  if (!appServerClient.connected()) {
-    appServerConnectionConfirmed = false;
-    server.send(409, "application/json", "{\"success\":false,\"error\":\"Socket is not connected\"}");
-    return;
-  }
-
   String body = server.arg("plain");
   if (body.length() > 0) {
     DynamicJsonDocument doc(256);
     if (deserializeJson(doc, body) == DeserializationError::Ok) {
       int selectedDeviceCode = doc["selected_device_code"] | appServerSelectedDeviceCode;
-
       if (isSupportedDeviceCode(selectedDeviceCode)) {
         applySelectedDeviceCode(selectedDeviceCode);
       }
     }
   }
 
-  appServerConnectRequestCode = 1;
-  logAppServer("Send connect request: code=1 selected_device_code=" + String(appServerSelectedDeviceCode));
+  if (!appServerClient.connected()) {
+    appServerConnectionConfirmed = false;
+    server.send(409, "application/json", "{\"success\":false,\"error\":\"Socket is not connected\"}");
+    return;
+  }
+
   sendConnectionRequestPacket();
   appServerConnectSent = true;
   appServerConnectionConfirmed = false;
@@ -799,7 +763,6 @@ static void handleAppServerSendConnectRequest() {
   DynamicJsonDocument resp(256);
   resp["success"] = true;
   resp["message"] = "Connection request packet sent";
-  resp["connect_request_code"] = 1;
   String out;
   serializeJson(resp, out);
   server.send(200, "application/json", out);
@@ -815,7 +778,6 @@ static void handleAppServerStatus() {
   doc["ip"] = appServerIp;
   doc["port"] = appServerPort;
   doc["id_type"] = appServerIdType;
-  doc["connect_request_code"] = appServerConnectRequestCode;
   doc["selected_device_code"] = appServerSelectedDeviceCode;
   doc["auto_reconnect"] = appServerAutoReconnect;
   doc["enabled"] = appServerEnabled;

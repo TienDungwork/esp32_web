@@ -7,8 +7,8 @@
 # 1) Test kết nối TCP:
 #    nc -zv 192.168.1.11 35000
 #
-# 2) Bắn 1 bảng tin yêu cầu kết nối (Code=3, kết thúc bằng \\n):
-#    python3 -c 'import json,socket; m=json.dumps({"model":"ESP32-S3","firmwareVersion":"dev","firmwareBuild":"","networkMode":"wifi_sta","ip":"192.168.1.100","mac":"AA:BB:CC:DD:EE:FF"}); p=json.dumps({"Code":3,"Message":m,"DeviceType":3})+"\n"; s=socket.socket(); s.settimeout(3); s.connect(("192.168.1.11",35000)); s.sendall(p.encode()); s.close(); print("Sent:", p.strip())'
+# 2) Bắn 1 gói API_CONNECT (Code=1) tối giản, kết thúc bằng <EOF> (đúng theo web_server.cpp):
+#    python3 -c 'import json,socket; info=json.dumps({"DeviceType":3}); p=json.dumps({"Code":1,"Message":info,"DeviceType":3,"CreatedAt":"0001-01-01T00:00:00","IndexInPacket":0})+"<EOF>"; s=socket.socket(); s.settimeout(3); s.connect(("192.168.1.11",35000)); s.sendall(p.encode()); s.close(); print("Sent:", p)'
 #
 
 HOST="${1:-192.168.1.11}"
@@ -28,17 +28,16 @@ else
   (echo >/dev/tcp/"$HOST"/"$PORT") 2>/dev/null && echo "OK: Cổng mở." || echo "Lỗi: Không kết nối được."
 fi
 
-# --- 2. Gửi 1 dòng JSON = bảng tin yêu cầu kết nối (giống sendConnectionRequestPacket) ---
-# Format: {"Code":<code>,"Message":"<JSON string>","DeviceType":<code>}\n
-# Message = JSON string của deviceInfo: model, firmwareVersion, firmwareBuild, networkMode, ip, mac
+# --- 2. Gửi 1 gói Code=1 (API_CONNECT) kết thúc bằng <EOF> ---
+# Format: {"Code":1,"Message":"<escaped DeviceInfo JSON>","Status":0,"DeviceType":<int>,"CreatedAt":"0001-01-01T00:00:00","IndexInPacket":0}<EOF>
 echo ""
-echo "=== 2. Gửi bảng tin yêu cầu kết nối (Code=$CODE) ==="
-# Dùng Python để build đúng JSON (escape Message)
+echo "=== 2. Gửi gói Code=1 (API_CONNECT) DeviceType=$CODE ==="
+# Dùng Python để build đúng JSON (escape Message) + delimiter <EOF>
 PACKET=$(python3 -c "
 import json
-msg = {'model':'ESP32-S3','firmwareVersion':'dev','firmwareBuild':'','networkMode':'wifi_sta','ip':'192.168.1.100','mac':'AA:BB:CC:DD:EE:FF'}
-payload = {'Code': $CODE, 'Message': json.dumps(msg), 'DeviceType': $CODE}
-print(json.dumps(payload))
+info = {'DeviceType': $CODE}
+payload = {'Code': 1, 'Message': json.dumps(info), 'DeviceType': $CODE, 'CreatedAt': '0001-01-01T00:00:00', 'IndexInPacket': 0}
+print(json.dumps(payload) + '<EOF>')
 ")
 echo "Gửi: $PACKET"
 ( echo "$PACKET"; ) | nc -w 3 "$HOST" "$PORT" && echo "Đã gửi xong." || echo "Gửi thất bại."

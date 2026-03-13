@@ -268,9 +268,7 @@
         ip,
         port: Number.isNaN(port) ? 0 : port,
         id_type: Number.isNaN(idType) ? APP_DEFAULT_DEVICE_CODE : idType,
-        // Code=1 là cố định theo bảng protocol (API_CONNECT)
-        connect_request_code: 1,
-        // Mã thiết bị được chọn trong bảng (gửi khi bấm "Gửi yêu cầu")
+        // Mã thiết bị được chọn trong bảng (DeviceType)
         selected_device_code: appServerSelectedDeviceCode,
         auto_reconnect: autoReconnect
       };
@@ -395,7 +393,7 @@
         const res = await fetch('/api/app-server/connect', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          // Kết nối TCP chỉ cần IP + Port.
+          // Kết nối TCP: chỉ cần IP + Port. Gói Code=1 sẽ gửi khi bấm "Gửi yêu cầu kết nối".
           body: JSON.stringify({
             ip: payload.ip,
             port: payload.port
@@ -414,14 +412,12 @@
 
     async function sendConnectRequestPacket() {
       const msgEl = document.getElementById('appServerMessage');
-      const connectRequestCode = 1;
-      msgEl.textContent = `Đang gửi gói yêu cầu kết nối (Code=1)...`;
+      msgEl.textContent = 'Đang gửi gói yêu cầu kết nối (Code=1)...';
       try {
         const res = await fetch('/api/app-server/send-connect-request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            connect_request_code: connectRequestCode,
             selected_device_code: appServerSelectedDeviceCode
           })
         });

@@ -93,8 +93,8 @@ void loadWiFiConfig() {
 
   // Fallback test WiFi only when nothing is configured in storage.
   if (wifi_ssid.length() == 0) {
-    wifi_ssid = "Phuc An";
-    wifi_password = "88889999";
+    wifi_ssid = "Lucky Pub";
+    wifi_password = "123456789";
     Serial.println("WiFi fallback TEST: " + wifi_ssid);
   }
 
