@@ -624,8 +624,14 @@ static void appServerLoop() {
     return;
   }
 
-  // Tắt hoàn toàn auto-reconnect nền để tránh vòng lặp reconnect/gửi gói
-  // khi app server đóng kết nối do lỗi protocol.
+  // Chỉ auto-reconnect TCP khi đã được bật bằng cấu hình,
+  // KHÔNG tự gửi lại gói connect (Code=1). Gói connect chỉ gửi khi user bấm nút.
+  if (!appServerEnabled || !appServerAutoReconnect) return;
+
+  const unsigned long retryIntervalMs = 5000;
+  if (millis() - appServerLastConnectAttemptMs >= retryIntervalMs) {
+    appServerConnectNow();
+  }
 }
 
 static void handleAppServerConfigGet() {
