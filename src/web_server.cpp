@@ -22,7 +22,7 @@ static String appServerIp = "";
 static uint16_t appServerPort = 0;
 static uint8_t appServerIdType = 1;
 static int appServerSelectedDeviceCode = 1;
-static bool appServerAutoReconnect = true;
+static bool appServerAutoReconnect = false;
 static bool appServerEnabled = false;
 static unsigned long appServerLastConnectAttemptMs = 0;
 static unsigned long appServerLastConnectedAtMs = 0;
@@ -111,16 +111,21 @@ static void sendAllDeviceConnectStatesLikeTconnect() {
   }
 }
 
-static void sendConnectionRequestPacket() {
+static bool sendConnectionRequestPacket() {
   if (!appServerClient.connected()) {
     appServerLastError = "Socket is not connected";
     appServerConnectionConfirmed = false;
     logAppServer("Cannot send connect request: socket not connected");
-    return;
+    return false;
   }
 
-  // Gửi nhiều gói Code=1 cho nhóm thiết bị tương ứng với mã đang chọn.
-  sendAllDeviceConnectStatesLikeTconnect();
+  // Gửi đúng 1 gói Code=1 cho thiết bị đang chọn,
+  // tránh spam nhiều DeviceType khiến app server đóng kết nối.
+  bool ok = sendConnectPacketForDeviceType(appServerSelectedDeviceCode);
+  if (!ok) {
+    logAppServer("Send connect packet failed for DeviceType=" + String(appServerSelectedDeviceCode));
+  }
+  return ok;
 }
 
 enum class DeviceControlMode : uint8_t {
@@ -619,12 +624,8 @@ static void appServerLoop() {
     return;
   }
 
-  if (!appServerEnabled || !appServerAutoReconnect) return;
-
-  const unsigned long retryIntervalMs = 5000;
-  if (millis() - appServerLastConnectAttemptMs >= retryIntervalMs) {
-    appServerConnectNow();
-  }
+  // Tắt hoàn toàn auto-reconnect nền để tránh vòng lặp reconnect/gửi gói
+  // khi app server đóng kết nối do lỗi protocol.
 }
 
 static void handleAppServerConfigGet() {
