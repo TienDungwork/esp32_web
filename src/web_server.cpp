@@ -463,7 +463,8 @@ static void loadAppServerConfig() {
   appServerPort = 0;
   appServerIdType = 1;
   appServerSelectedDeviceCode = 1;
-  appServerAutoReconnect = true;
+  // Mặc định KHÔNG auto-reconnect để tránh loop vô hạn khi IP/Port sai.
+  appServerAutoReconnect = false;
   appServerEnabled = false;
 
   if (!LittleFS.exists(APP_SERVER_CONFIG_FILE)) return;
@@ -733,9 +734,17 @@ static void handleAppServerConnect() {
     }
   }
 
-  appServerEnabled = true;
-  saveAppServerConfig();
+  // Chỉ dùng cờ này để quyết định có auto-reconnect sau này hay không.
+  bool wantAutoReconnect = appServerAutoReconnect;
+
+  // Thử kết nối ngay một lần theo yêu cầu của người dùng.
   bool ok = appServerConnectNow();
+
+  // Nếu kết nối thành công và người dùng bật auto-reconnect thì mới bật appServerEnabled
+  // để vòng lặp nền tự reconnect khi rớt. Nếu kết nối thất bại hoặc tắt auto-reconnect
+  // thì không bật auto-reconnect để tránh loop vô hạn.
+  appServerEnabled = ok && wantAutoReconnect;
+  saveAppServerConfig();
 
   DynamicJsonDocument resp(384);
   resp["success"] = ok;

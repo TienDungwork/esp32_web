@@ -393,9 +393,11 @@
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           // Kết nối TCP: chỉ cần IP + Port. Gói Code=1 sẽ gửi khi bấm "Gửi yêu cầu kết nối".
+          // Truyền thêm auto_reconnect để firmware biết có cần auto reconnect hay không.
           body: JSON.stringify({
             ip: payload.ip,
-            port: payload.port
+            port: payload.port,
+            auto_reconnect: payload.auto_reconnect
           })
         });
         const data = await res.json();
