@@ -82,6 +82,35 @@ static bool sendConnectPacketForDeviceType(int deviceType) {
   return true;
 }
 
+// Gửi nhiều gói Code=1 cho danh sách thiết bị, giống luồng tconnect cũ.
+static void sendAllDeviceConnectStatesLikeTconnect() {
+  int selected = appServerSelectedDeviceCode;
+
+  // Nhóm thiết bị vào
+  static const int enterList[] = {1, 3, 4, 5, 6, 7, 10, 11, 102};
+  // Nhóm thiết bị ra
+  static const int exitList[]  = {51, 53, 54, 55, 56, 57, 102};
+  // Nhóm loa
+  static const int speakerList[] = {102};
+
+  const int* list = enterList;
+  int count = (int)(sizeof(enterList) / sizeof(enterList[0]));
+  if (selected >= 51 && selected <= 61) {
+    list = exitList;
+    count = (int)(sizeof(exitList) / sizeof(exitList[0]));
+  } else if (selected == 102) {
+    list = speakerList;
+    count = (int)(sizeof(speakerList) / sizeof(speakerList[0]));
+  }
+
+  logAppServer("Send connect list count=" + String(count) +
+               " selected_device_code=" + String(selected));
+  for (int i = 0; i < count; i++) {
+    sendConnectPacketForDeviceType(list[i]);
+    delay(30);
+  }
+}
+
 static void sendConnectionRequestPacket() {
   if (!appServerClient.connected()) {
     appServerLastError = "Socket is not connected";
@@ -90,11 +119,8 @@ static void sendConnectionRequestPacket() {
     return;
   }
 
-  int deviceType = appServerSelectedDeviceCode;
-  logAppServer("Send connect request Code=1 DeviceType=" + String(deviceType));
-  if (!sendConnectPacketForDeviceType(deviceType)) {
-    logAppServer("Send connect request failed");
-  }
+  // Gửi nhiều gói Code=1 cho nhóm thiết bị tương ứng với mã đang chọn.
+  sendAllDeviceConnectStatesLikeTconnect();
 }
 
 enum class DeviceControlMode : uint8_t {

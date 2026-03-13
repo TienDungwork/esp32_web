@@ -216,7 +216,6 @@
       tableBody.innerHTML = APP_DEVICE_TYPES.map(item => `
         <tr data-device-code="${item.code}">
           <td>${item.name}</td>
-          <td>${item.code}</td>
           <td>
             <span class="device-conn-dot disconnected" id="deviceConnDot-${item.code}"></span>
             <span class="device-conn-label" id="deviceConnLabel-${item.code}">Chưa kết nối</span>
