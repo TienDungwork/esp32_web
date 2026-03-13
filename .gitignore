@@ -18,3 +18,7 @@ WeighAll.Fw.Device-main/
 Bag_Count_System/
 
 .vscode/
+
+# Local helper scripts (không cần commit)
+scripts/auto_git_push.sh
+

@@ -559,12 +559,6 @@ static bool appServerConnectNow() {
   appServerLastResponseCode = 0;
   appServerWaitingForResponse = false;
   logAppServer("TCP connected. Local=" + appServerClient.localIP().toString() + ":" + String(appServerClient.localPort()));
-  // Nếu trước đó user đã gửi yêu cầu kết nối (appServerConnectSent=true),
-  // thì khi reconnect sẽ tự động gửi lại gói Code=1.
-  if (appServerConnectSent) {
-    logAppServer("Auto-resend connect request after reconnect");
-    sendConnectionRequestPacket();
-  }
   return true;
 }
 
@@ -790,14 +784,16 @@ static void handleAppServerSendConnectRequest() {
     server.send(409, "application/json", "{\"success\":false,\"error\":\"Socket is not connected\"}");
     return;
   }
-
-  sendConnectionRequestPacket();
-  appServerConnectSent = true;
-  appServerConnectionConfirmed = false;
+  bool sentOk = sendConnectionRequestPacket();
+  if (sentOk) {
+    appServerConnectSent = true;
+    appServerConnectionConfirmed = false;
+  }
 
   DynamicJsonDocument resp(256);
-  resp["success"] = true;
-  resp["message"] = "Connection request packet sent";
+  resp["success"] = sentOk;
+  resp["message"] = sentOk ? "Connection request packet sent"
+                           : "Failed to send connection request packet";
   String out;
   serializeJson(resp, out);
   server.send(200, "application/json", out);
