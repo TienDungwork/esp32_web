@@ -37,6 +37,13 @@ static int appServerLastResponseStatus = -1;
 static int appServerLastResponseCode = 0;
 static bool ntpConfigured = false;
 
+// Cache danh sách DeviceType đang được app yêu cầu giữ kết nối (multi-select)
+static int appServerActiveDeviceTypes[16];
+static int appServerActiveDeviceTypeCount = 0;
+static unsigned long appServerLastDataTxRxMs = 0;  // thời điểm cuối có TX/RX
+static unsigned long appServerLastHeartbeatMs = 0; // heartbeat Code=1
+static bool appServerSentActiveStatesThisSession = false;
+
 static void logAppServer(const String& msg) {
   Serial.println("[AppServer] " + msg);
 }
@@ -70,6 +77,7 @@ static bool sendConnectPacketForDeviceType(int deviceType) {
 
   size_t written = appServerClient.print(out);
   appServerLastTxAtMs = millis();
+  appServerLastDataTxRxMs = appServerLastTxAtMs;
   appServerWaitingForResponse = true;
 
   if (written != out.length()) {
@@ -269,6 +277,7 @@ static bool writePacketToAppServer(int code,
 
   size_t written = appServerClient.print(out);
   appServerLastTxAtMs = millis();
+  appServerLastDataTxRxMs = appServerLastTxAtMs;
   appServerWaitingForResponse = true;
   if (written != out.length()) {
     appServerLastError = "Write packet failed";
@@ -387,7 +396,9 @@ static bool handleAppServerPacket(const String& packetJson, String* errorMessage
   // APP -> Controller dispatch theo bảng Code (WeighAll)
   switch (code) {
     case 1:   // Connect ACK/heartbeat payload from app server
-    case 2:   // Ping/Pong payload from app server
+      return true;
+
+    case 2:   // Không dùng trong dự án này
       return true;
 
     case 201:  // LED
@@ -563,7 +574,21 @@ static bool appServerConnectNow() {
   appServerLastResponseStatus = -1;
   appServerLastResponseCode = 0;
   appServerWaitingForResponse = false;
+  appServerLastDataTxRxMs = millis();
+  appServerLastHeartbeatMs = appServerLastDataTxRxMs;
+  appServerSentActiveStatesThisSession = false;
   logAppServer("TCP connected. Local=" + appServerClient.localIP().toString() + ":" + String(appServerClient.localPort()));
+
+  // Giống WeighAll: sau khi connect lại TCP, gửi lại connect-state (Code=1)
+  // cho danh sách DeviceType đang active đúng 1 lần để app server set "xanh" lại.
+  if (appServerActiveDeviceTypeCount > 0 && !appServerSentActiveStatesThisSession) {
+    logAppServer("Send active device connect states after TCP connect, count=" + String(appServerActiveDeviceTypeCount));
+    for (int i = 0; i < appServerActiveDeviceTypeCount; i++) {
+      sendConnectPacketForDeviceType(appServerActiveDeviceTypes[i]);
+      delay(30);
+    }
+    appServerSentActiveStatesThisSession = true;
+  }
   return true;
 }
 
@@ -574,6 +599,8 @@ static void appServerDisconnect() {
   appServerConnectionConfirmed = false;
   appServerWaitingForResponse = false;
   appServerConnectSent = false;
+  appServerLastHeartbeatMs = 0;
+  appServerSentActiveStatesThisSession = false;
   logAppServer("Disconnected");
 }
 
@@ -593,6 +620,7 @@ static void appServerLoop() {
       char ch = static_cast<char>(appServerClient.read());
       appServerRxBuffer += ch;
       appServerLastRxAtMs = millis();
+      appServerLastDataTxRxMs = appServerLastRxAtMs;
 
       if (appServerRxBuffer.length() > 8192) {
         appServerRxBuffer = "";
@@ -620,6 +648,24 @@ static void appServerLoop() {
       }
 
       eofIdx = appServerRxBuffer.indexOf(APP_PACKET_DELIM);
+    }
+
+    // Heartbeat chỉ dùng Code=1 (theo yêu cầu): giữ "xanh" và cũng giữ TCP không bị idle quá lâu.
+    const unsigned long heartbeatIntervalMs = 5000;
+    unsigned long now = millis();
+    if (appServerActiveDeviceTypeCount > 0 &&
+        now - appServerLastHeartbeatMs >= heartbeatIntervalMs) {
+      bool sentAny = false;
+      for (int i = 0; i < appServerActiveDeviceTypeCount; i++) {
+        if (sendConnectPacketForDeviceType(appServerActiveDeviceTypes[i])) {
+          sentAny = true;
+          delay(20);
+        }
+      }
+      if (sentAny) {
+        appServerLastHeartbeatMs = now;
+        logAppServer("Heartbeat Code=1 sent for " + String(appServerActiveDeviceTypeCount) + " device types");
+      }
     }
     return;
   }
@@ -811,14 +857,20 @@ static void handleAppServerSendConnectRequest() {
         return;
       }
 
-      // Cập nhật mã cuối cùng để giữ tương thích với cấu hình cũ.
-      appServerSelectedDeviceCode = codes[codeCount - 1];
-
       if (!appServerClient.connected()) {
         appServerConnectionConfirmed = false;
         server.send(409, "application/json", "{\"success\":false,\"error\":\"Socket is not connected\"}");
         return;
       }
+
+      // Cập nhật cache active DeviceType để dùng cho heartbeat nền
+      appServerActiveDeviceTypeCount = codeCount;
+      for (int i = 0; i < codeCount; i++) {
+        appServerActiveDeviceTypes[i] = codes[i];
+      }
+      appServerLastHeartbeatMs = millis();
+      // Cập nhật mã cuối cùng để giữ tương thích với cấu hình cũ.
+      appServerSelectedDeviceCode = codes[codeCount - 1];
 
       bool anySent = false;
       for (int i = 0; i < codeCount; i++) {
