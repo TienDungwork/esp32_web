@@ -207,6 +207,9 @@
     const APP_DEFAULT_DEVICE_CODE = 3;
 
     const APP_DEVICE_TYPE_CODE_SET = new Set(APP_DEVICE_TYPES.map(x => x.code));
+    // Danh sách mã DeviceType đang được chọn (cache để gửi connect sau)
+    let appServerSelectedDeviceCodes = new Set([APP_DEFAULT_DEVICE_CODE]);
+    // Mã cuối cùng được chọn (dùng để fill id_type cho form cũ)
     let appServerSelectedDeviceCode = APP_DEFAULT_DEVICE_CODE;
 
     function renderDeviceTypeTable() {
@@ -226,26 +229,43 @@
         </tr>
       `).join('');
 
-      selectAppDeviceType(appServerSelectedDeviceCode, false);
+      // Áp dụng lại trạng thái chọn/bỏ chọn hiện tại
+      document.querySelectorAll('#deviceTypeTable tbody tr').forEach(row => {
+        const rowCode = parseInt(row.getAttribute('data-device-code') || '0', 10);
+        const selected = appServerSelectedDeviceCodes.has(rowCode);
+        row.classList.toggle('selected', selected);
+        const btn = row.querySelector('button');
+        if (btn) btn.textContent = selected ? 'Đã chọn' : 'Chọn';
+      });
       updateDeviceTypeConnectionIndicators(false);
     }
 
     function selectAppDeviceType(deviceCode, syncCode = true) {
       if (!APP_DEVICE_TYPE_CODE_SET.has(deviceCode)) return;
 
-      appServerSelectedDeviceCode = deviceCode;
+      // Toggle chọn / bỏ chọn trong cache
+      if (appServerSelectedDeviceCodes.has(deviceCode)) {
+        appServerSelectedDeviceCodes.delete(deviceCode);
+      } else {
+        appServerSelectedDeviceCodes.add(deviceCode);
+        appServerSelectedDeviceCode = deviceCode; // nhớ mã cuối cùng để điền id_type
+      }
+
       const idTypeInput = document.getElementById('appServerIdType');
-      if (idTypeInput) idTypeInput.value = String(deviceCode);
+      if (idTypeInput) idTypeInput.value = String(appServerSelectedDeviceCode);
 
       document.querySelectorAll('#deviceTypeTable tbody tr').forEach(row => {
         const rowCode = parseInt(row.getAttribute('data-device-code') || '0', 10);
-        row.classList.toggle('selected', rowCode === deviceCode);
+        const selected = appServerSelectedDeviceCodes.has(rowCode);
+        row.classList.toggle('selected', selected);
+        const btn = row.querySelector('button');
+        if (btn) btn.textContent = selected ? 'Đã chọn' : 'Chọn';
       });
     }
 
-    function updateDeviceTypeConnectionIndicators(connected, selectedCode = appServerSelectedDeviceCode) {
+    function updateDeviceTypeConnectionIndicators(connected) {
       APP_DEVICE_TYPES.forEach(item => {
-        const isSelected = item.code === selectedCode;
+        const isSelected = appServerSelectedDeviceCodes.has(item.code);
         const isConnected = !!connected && isSelected;
 
         const dotEl = document.getElementById(`deviceConnDot-${item.code}`);
@@ -279,12 +299,17 @@
       document.getElementById('appServerPort').value = data.port || '';
       const selectedCode = parseInt(data.selected_device_code || data.id_type || APP_DEFAULT_DEVICE_CODE, 10);
       if (APP_DEVICE_TYPE_CODE_SET.has(selectedCode)) {
-        selectAppDeviceType(selectedCode, false);
+        appServerSelectedDeviceCodes = new Set([selectedCode]);
+        appServerSelectedDeviceCode = selectedCode;
       } else {
-        selectAppDeviceType(APP_DEFAULT_DEVICE_CODE, false);
+        appServerSelectedDeviceCodes = new Set([APP_DEFAULT_DEVICE_CODE]);
+        appServerSelectedDeviceCode = APP_DEFAULT_DEVICE_CODE;
       }
       document.getElementById('appServerIdType').value = data.id_type || appServerSelectedDeviceCode;
       document.getElementById('appServerAutoReconnect').checked = !!data.auto_reconnect;
+
+      // Cập nhật lại UI bảng
+      renderDeviceTypeTable();
     }
 
     function setAppServerStatusText(connected, confirmed, lastError = '') {
@@ -319,7 +344,7 @@
         inlineDotEl.className = 'app-server-inline-dot ' + (connected ? 'connected' : 'disconnected');
       }
 
-      updateDeviceTypeConnectionIndicators(connected && confirmed, appServerSelectedDeviceCode);
+      updateDeviceTypeConnectionIndicators(connected && confirmed);
     }
 
     async function loadAppServerConfig() {
@@ -345,7 +370,9 @@
         const data = await res.json();
         const selectedCode = parseInt(data.selected_device_code || data.id_type || appServerSelectedDeviceCode, 10);
         if (APP_DEVICE_TYPE_CODE_SET.has(selectedCode)) {
-          selectAppDeviceType(selectedCode, false);
+          appServerSelectedDeviceCodes = new Set([selectedCode]);
+          appServerSelectedDeviceCode = selectedCode;
+          renderDeviceTypeTable();
         }
         const connected = !!data.connected;
         const confirmed = !!data.connection_confirmed;
@@ -413,13 +440,19 @@
 
     async function sendConnectRequestPacket() {
       const msgEl = document.getElementById('appServerMessage');
-      msgEl.textContent = 'Đang gửi gói yêu cầu kết nối (Code=1)...';
+      const selectedCodes = Array.from(appServerSelectedDeviceCodes || []);
+      if (!selectedCodes.length) {
+        msgEl.textContent = 'Vui lòng chọn ít nhất một thiết bị để gửi yêu cầu kết nối.';
+        return;
+      }
+
+      msgEl.textContent = 'Đang gửi gói yêu cầu kết nối (Code=1) cho ' + selectedCodes.length + ' thiết bị...';
       try {
         const res = await fetch('/api/app-server/send-connect-request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            selected_device_code: appServerSelectedDeviceCode
+            selected_device_codes: selectedCodes
           })
         });
         const data = await res.json();

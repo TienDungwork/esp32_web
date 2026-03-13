@@ -779,31 +779,70 @@ static void handleAppServerSendConnectRequest() {
   if (body.length() > 0) {
     DynamicJsonDocument doc(256);
     if (deserializeJson(doc, body) == DeserializationError::Ok) {
-      int selectedDeviceCode = doc["selected_device_code"] | appServerSelectedDeviceCode;
-      if (isSupportedDeviceCode(selectedDeviceCode)) {
-        applySelectedDeviceCode(selectedDeviceCode);
+      // Thu thập danh sách mã thiết bị cần gửi từ client.
+      int codes[16];
+      int codeCount = 0;
+
+      if (doc.containsKey("selected_device_codes")) {
+        JsonArray arr = doc["selected_device_codes"].as<JsonArray>();
+        for (JsonVariant v : arr) {
+          int c = v | 0;
+          if (!isSupportedDeviceCode(c)) continue;
+          bool already = false;
+          for (int i = 0; i < codeCount; i++) {
+            if (codes[i] == c) { already = true; break; }
+          }
+          if (!already && codeCount < 16) {
+            codes[codeCount++] = c;
+          }
+        }
       }
+
+      if (codeCount == 0) {
+        int selectedDeviceCode = doc["selected_device_code"] | appServerSelectedDeviceCode;
+        if (isSupportedDeviceCode(selectedDeviceCode)) {
+          codes[0] = selectedDeviceCode;
+          codeCount = 1;
+        }
+      }
+
+      if (codeCount == 0) {
+        server.send(400, "application/json", "{\"success\":false,\"error\":\"No valid device types selected\"}");
+        return;
+      }
+
+      // Cập nhật mã cuối cùng để giữ tương thích với cấu hình cũ.
+      appServerSelectedDeviceCode = codes[codeCount - 1];
+
+      if (!appServerClient.connected()) {
+        appServerConnectionConfirmed = false;
+        server.send(409, "application/json", "{\"success\":false,\"error\":\"Socket is not connected\"}");
+        return;
+      }
+
+      bool anySent = false;
+      for (int i = 0; i < codeCount; i++) {
+        // Gửi gói connect cho từng DeviceType đã chọn.
+        if (sendConnectPacketForDeviceType(codes[i])) {
+          anySent = true;
+          delay(30);
+        }
+      }
+
+      DynamicJsonDocument resp(256);
+      resp["success"] = anySent;
+      resp["message"] = anySent
+                          ? "Connection request packets sent"
+                          : "Failed to send connection request packets";
+      String out;
+      serializeJson(resp, out);
+      server.send(anySent ? 200 : 500, "application/json", out);
+      return;
     }
   }
 
-  if (!appServerClient.connected()) {
-    appServerConnectionConfirmed = false;
-    server.send(409, "application/json", "{\"success\":false,\"error\":\"Socket is not connected\"}");
-    return;
-  }
-  bool sentOk = sendConnectionRequestPacket();
-  if (sentOk) {
-    appServerConnectSent = true;
-    appServerConnectionConfirmed = false;
-  }
-
-  DynamicJsonDocument resp(256);
-  resp["success"] = sentOk;
-  resp["message"] = sentOk ? "Connection request packet sent"
-                           : "Failed to send connection request packet";
-  String out;
-  serializeJson(resp, out);
-  server.send(200, "application/json", out);
+  // Body rỗng hoặc JSON không hợp lệ.
+  server.send(400, "application/json", "{\"success\":false,\"error\":\"Invalid request body\"}");
 }
 
 static void handleAppServerStatus() {
