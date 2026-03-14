@@ -256,15 +256,21 @@
       });
     }
 
-    // Device luôn gửi: LED vào 4, LED ra 54, Lưới HN vào 6, Lưới HN ra 56.
-    // Tích Barrier → thêm 3, 53. Tích Đèn giao thông → thêm 5, 55.
+    // Danh sách đầy đủ: 3,4,5,6,53,54,55,56.
+    // Nếu chỉ chọn Barrier → gửi Barrier (3,53) + LED + Lưới HN, bỏ Đèn giao thông (5,55).
+    // Nếu chỉ chọn Đèn giao thông → gửi Đèn GT (5,55) + LED + Lưới HN, bỏ Barrier (3,53).
+    // Nếu trạng thái không hợp lệ (cả hai hoặc không cái nào) → gửi đủ 8.
     function getSelectedDeviceCodesFromCheckboxes() {
       const useBarrier = !!document.getElementById('appServerUseBarrier')?.checked;
       const useTraffic = !!document.getElementById('appServerUseTraffic')?.checked;
-      const base = [4, 6, 54, 56];
-      if (useBarrier) base.push(3, 53);
-      if (useTraffic) base.push(5, 55);
-      return base;
+      const all = [3, 4, 5, 6, 53, 54, 55, 56];
+      if (useBarrier && !useTraffic) {
+        return all.filter(c => c !== 5 && c !== 55);
+      }
+      if (useTraffic && !useBarrier) {
+        return all.filter(c => c !== 3 && c !== 53);
+      }
+      return all;
     }
 
     function getAppServerPayloadFromForm() {
@@ -303,6 +309,23 @@
       if (trafficEl) trafficEl.checked = codes.length === 0 ? true : !!hasTraffic;
 
       renderDeviceTypeTable();
+      const barrierEl = document.getElementById('appServerUseBarrier');
+      const trafficEl = document.getElementById('appServerUseTraffic');
+      if (barrierEl && trafficEl) {
+        const enforceExclusive = (changed) => {
+          if (changed === 'barrier' && barrierEl.checked) {
+            trafficEl.checked = false;
+          } else if (changed === 'traffic' && trafficEl.checked) {
+            barrierEl.checked = false;
+          }
+          if (!barrierEl.checked && !trafficEl.checked) {
+            if (changed === 'barrier') barrierEl.checked = true; else trafficEl.checked = true;
+          }
+        };
+        barrierEl.addEventListener('change', () => enforceExclusive('barrier'));
+        trafficEl.addEventListener('change', () => enforceExclusive('traffic'));
+      }
+
     }
 
     function setAppServerStatusText(connected, confirmed, lastError = '') {
@@ -366,6 +389,23 @@
           appServerSelectedDeviceCodes = new Set([selectedCode]);
           appServerSelectedDeviceCode = selectedCode;
           renderDeviceTypeTable();
+      const barrierEl = document.getElementById('appServerUseBarrier');
+      const trafficEl = document.getElementById('appServerUseTraffic');
+      if (barrierEl && trafficEl) {
+        const enforceExclusive = (changed) => {
+          if (changed === 'barrier' && barrierEl.checked) {
+            trafficEl.checked = false;
+          } else if (changed === 'traffic' && trafficEl.checked) {
+            barrierEl.checked = false;
+          }
+          if (!barrierEl.checked && !trafficEl.checked) {
+            if (changed === 'barrier') barrierEl.checked = true; else trafficEl.checked = true;
+          }
+        };
+        barrierEl.addEventListener('change', () => enforceExclusive('barrier'));
+        trafficEl.addEventListener('change', () => enforceExclusive('traffic'));
+      }
+
         }
         const connected = !!data.connected;
         const confirmed = !!data.connection_confirmed;
@@ -795,6 +835,23 @@
     /* ══════════════════════════════════════════════════ */
     window.addEventListener('load', () => {
       renderDeviceTypeTable();
+      const barrierEl = document.getElementById('appServerUseBarrier');
+      const trafficEl = document.getElementById('appServerUseTraffic');
+      if (barrierEl && trafficEl) {
+        const enforceExclusive = (changed) => {
+          if (changed === 'barrier' && barrierEl.checked) {
+            trafficEl.checked = false;
+          } else if (changed === 'traffic' && trafficEl.checked) {
+            barrierEl.checked = false;
+          }
+          if (!barrierEl.checked && !trafficEl.checked) {
+            if (changed === 'barrier') barrierEl.checked = true; else trafficEl.checked = true;
+          }
+        };
+        barrierEl.addEventListener('change', () => enforceExclusive('barrier'));
+        trafficEl.addEventListener('change', () => enforceExclusive('traffic'));
+      }
+
       document.querySelectorAll('input[name="trafficState"]').forEach((input) => {
         input.addEventListener('change', () => {
           trafficSelectionDirty = true;
