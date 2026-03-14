@@ -504,16 +504,35 @@ static void loadAppServerConfig() {
   }
   appServerAutoReconnect = doc["auto_reconnect"] | true;
   appServerEnabled = doc["enabled"] | false;
+
+  if (doc.containsKey("selected_device_codes") && doc["selected_device_codes"].is<JsonArray>()) {
+    JsonArray arr = doc["selected_device_codes"].as<JsonArray>();
+    appServerActiveDeviceTypeCount = 0;
+    for (JsonVariant v : arr) {
+      int c = v.as<int>();
+      if (!isSupportedDeviceCode(c) || appServerActiveDeviceTypeCount >= 16) continue;
+      bool dup = false;
+      for (int i = 0; i < appServerActiveDeviceTypeCount; i++) {
+        if (appServerActiveDeviceTypes[i] == c) { dup = true; break; }
+      }
+      if (!dup) appServerActiveDeviceTypes[appServerActiveDeviceTypeCount++] = c;
+    }
+  }
 }
 
 static void saveAppServerConfig() {
-  DynamicJsonDocument doc(512);
+  DynamicJsonDocument doc(768);
   doc["ip"] = appServerIp;
   doc["port"] = appServerPort;
   doc["id_type"] = appServerIdType;
   doc["selected_device_code"] = appServerSelectedDeviceCode;
   doc["auto_reconnect"] = appServerAutoReconnect;
   doc["enabled"] = appServerEnabled;
+
+  JsonArray arr = doc.createNestedArray("selected_device_codes");
+  for (int i = 0; i < appServerActiveDeviceTypeCount; i++) {
+    arr.add(appServerActiveDeviceTypes[i]);
+  }
 
   File file = LittleFS.open(APP_SERVER_CONFIG_FILE, "w");
   if (!file) return;
@@ -575,18 +594,17 @@ static bool appServerConnectNow() {
   appServerSentActiveStatesThisSession = false;
   logAppServer("TCP connected. Local=" + appServerClient.localIP().toString() + ":" + String(appServerClient.localPort()));
 
-  // Tự động gửi gói Code=1 cho tất cả 8 thiết bị hiện tại (không cần user chọn hay bấm gửi).
-  // Danh sách cố định: Barrier vào 3, Đèn LED vào 4, Đèn GT vào 5, Lưới HN vào 6,
-  // Barrier ra 53, Đèn LED ra 54, Đèn GT ra 55, Lưới HN ra 56.
-  static const int ALL_DEVICE_TYPES[] = {3, 4, 5, 6, 53, 54, 55, 56};
-  static const int ALL_DEVICE_COUNT = (int)(sizeof(ALL_DEVICE_TYPES) / sizeof(ALL_DEVICE_TYPES[0]));
-
-  appServerActiveDeviceTypeCount = ALL_DEVICE_COUNT;
-  for (int i = 0; i < ALL_DEVICE_COUNT; i++) {
-    appServerActiveDeviceTypes[i] = ALL_DEVICE_TYPES[i];
+  // Nếu đã có danh sách từ request (Barrier/Đèn GT checkbox) thì dùng; không thì mặc định cả 8.
+  if (appServerActiveDeviceTypeCount <= 0) {
+    static const int ALL_DEVICE_TYPES[] = {3, 4, 5, 6, 53, 54, 55, 56};
+    static const int ALL_DEVICE_COUNT = (int)(sizeof(ALL_DEVICE_TYPES) / sizeof(ALL_DEVICE_TYPES[0]));
+    appServerActiveDeviceTypeCount = ALL_DEVICE_COUNT;
+    for (int i = 0; i < ALL_DEVICE_COUNT; i++) {
+      appServerActiveDeviceTypes[i] = ALL_DEVICE_TYPES[i];
+    }
   }
 
-  logAppServer("Auto-send connect (Code=1) for all " + String(ALL_DEVICE_COUNT) + " device types");
+  logAppServer("Auto-send connect (Code=1) for " + String(appServerActiveDeviceTypeCount) + " device types");
   for (int i = 0; i < appServerActiveDeviceTypeCount; i++) {
     sendConnectPacketForDeviceType(appServerActiveDeviceTypes[i]);
     delay(30);
@@ -688,13 +706,17 @@ static void handleAppServerConfigGet() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.sendHeader("Cache-Control", "no-cache");
 
-  DynamicJsonDocument doc(512);
+  DynamicJsonDocument doc(768);
   doc["ip"] = appServerIp;
   doc["port"] = appServerPort;
   doc["id_type"] = appServerIdType;
   doc["selected_device_code"] = appServerSelectedDeviceCode;
   doc["auto_reconnect"] = appServerAutoReconnect;
   doc["enabled"] = appServerEnabled;
+  JsonArray arr = doc.createNestedArray("selected_device_codes");
+  for (int i = 0; i < appServerActiveDeviceTypeCount; i++) {
+    arr.add(appServerActiveDeviceTypes[i]);
+  }
 
   String out;
   serializeJson(doc, out);
@@ -761,8 +783,7 @@ static void handleAppServerConfigPost() {
 static void handleAppServerConnect() {
   server.sendHeader("Access-Control-Allow-Origin", "*");
 
-  // Optional payload to save and connect in one action.
-  // For connect action, only IP/Port are required.
+  // Optional payload: ip, port, auto_reconnect, selected_device_codes (từ checkbox Barrier/Đèn GT).
   String body = server.arg("plain");
   if (body.length() > 0) {
     DynamicJsonDocument doc(512);
@@ -782,13 +803,25 @@ static void handleAppServerConnect() {
       if (doc.containsKey("auto_reconnect")) {
         appServerAutoReconnect = doc["auto_reconnect"] | true;
       }
+
+      if (doc.containsKey("selected_device_codes") && doc["selected_device_codes"].is<JsonArray>()) {
+        JsonArray arr = doc["selected_device_codes"].as<JsonArray>();
+        appServerActiveDeviceTypeCount = 0;
+        for (JsonVariant v : arr) {
+          int c = v.as<int>();
+          if (!isSupportedDeviceCode(c) || appServerActiveDeviceTypeCount >= 16) continue;
+          bool dup = false;
+          for (int i = 0; i < appServerActiveDeviceTypeCount; i++) {
+            if (appServerActiveDeviceTypes[i] == c) { dup = true; break; }
+          }
+          if (!dup) appServerActiveDeviceTypes[appServerActiveDeviceTypeCount++] = c;
+        }
+      }
     }
   }
 
-  // Chỉ dùng cờ này để quyết định có auto-reconnect sau này hay không.
   bool wantAutoReconnect = appServerAutoReconnect;
 
-  // Thử kết nối ngay một lần theo yêu cầu của người dùng.
   bool ok = appServerConnectNow();
 
   // Nếu kết nối thành công và người dùng bật auto-reconnect thì mới bật appServerEnabled

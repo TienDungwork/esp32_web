@@ -187,9 +187,20 @@
               <span class="status-value" id="appServerConnState">Chưa kiểm tra</span>
             </div>
 
+            <div class="device-option-checkboxes" style="margin-bottom:14px">
+              <label class="checkbox-inline">
+                <input type="checkbox" id="appServerUseBarrier" checked>
+                Barrier (vào + ra)
+              </label>
+              <label class="checkbox-inline" style="margin-left:16px">
+                <input type="checkbox" id="appServerUseTraffic" checked>
+                Đèn giao thông (vào + ra)
+              </label>
+            </div>
+            <p class="hint" style="margin-bottom:10px">Tích Barrier: gửi Barrier + LED + Lưới HN. Tích Đèn giao thông: gửi Đèn GT + LED + Lưới HN. Có thể tích cả hai.</p>
             <div class="device-type-card">
               <h3>Bảng thiết bị</h3>
-              <p class="device-type-subtitle">Khi lưu IP server, hệ thống tự kết nối và gửi gói Code=1 cho tất cả thiết bị sau.</p>
+              <p class="device-type-subtitle">Khi lưu IP server, hệ thống tự kết nối và gửi gói Code=1 theo lựa chọn trên.</p>
               <div class="device-type-table-wrap">
                 <table class="device-type-table" id="deviceTypeTable">
                   <thead>

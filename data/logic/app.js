@@ -256,6 +256,17 @@
       });
     }
 
+    // Device luôn gửi: LED vào 4, LED ra 54, Lưới HN vào 6, Lưới HN ra 56.
+    // Tích Barrier → thêm 3, 53. Tích Đèn giao thông → thêm 5, 55.
+    function getSelectedDeviceCodesFromCheckboxes() {
+      const useBarrier = !!document.getElementById('appServerUseBarrier')?.checked;
+      const useTraffic = !!document.getElementById('appServerUseTraffic')?.checked;
+      const base = [4, 6, 54, 56];
+      if (useBarrier) base.push(3, 53);
+      if (useTraffic) base.push(5, 55);
+      return base;
+    }
+
     function getAppServerPayloadFromForm() {
       const ip = document.getElementById('appServerIp')?.value?.trim() || '';
       const port = parseInt(document.getElementById('appServerPort')?.value || '0', 10);
@@ -283,7 +294,14 @@
       }
       document.getElementById('appServerIdType').value = data.id_type || appServerSelectedDeviceCode;
 
-      // Cập nhật lại UI bảng
+      const codes = data.selected_device_codes || [];
+      const hasBarrier = codes.includes(3) || codes.includes(53);
+      const hasTraffic = codes.includes(5) || codes.includes(55);
+      const barrierEl = document.getElementById('appServerUseBarrier');
+      const trafficEl = document.getElementById('appServerUseTraffic');
+      if (barrierEl) barrierEl.checked = codes.length === 0 ? true : !!hasBarrier;
+      if (trafficEl) trafficEl.checked = codes.length === 0 ? true : !!hasTraffic;
+
       renderDeviceTypeTable();
     }
 
@@ -383,14 +401,20 @@
           return;
         }
 
+        const selectedDeviceCodes = getSelectedDeviceCodesFromCheckboxes();
         const resConnect = await fetch('/api/app-server/connect', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ip: payload.ip, port: payload.port, auto_reconnect: true })
+          body: JSON.stringify({
+            ip: payload.ip,
+            port: payload.port,
+            auto_reconnect: true,
+            selected_device_codes: selectedDeviceCodes
+          })
         });
         const dataConnect = await resConnect.json();
         msgEl.textContent = resConnect.ok
-          ? (dataConnect.message || 'Đã lưu và kết nối server. Gói Code=1 tự gửi cho 8 thiết bị.')
+          ? (dataConnect.message || 'Đã lưu và kết nối server. Gói Code=1 gửi cho ' + selectedDeviceCodes.length + ' thiết bị.')
           : (dataConnect.error || dataConnect.message || 'Kết nối thất bại.');
       } catch (_) {
         msgEl.textContent = 'Lỗi khi lưu hoặc kết nối server.';

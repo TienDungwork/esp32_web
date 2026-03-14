@@ -480,6 +480,16 @@ body {
   color: #495057;
 }
 
+.checkbox-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #495057;
+}
+.checkbox-inline input { width: auto; }
+
 .form-group input,
 .form-group select {
   width: 100%;
