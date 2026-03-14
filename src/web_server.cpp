@@ -19,7 +19,7 @@ static const char* APP_PACKET_DELIM = "<EOF>";
 
 static WiFiClient appServerClient;
 static String appServerIp = "";
-static uint16_t appServerPort = 0;
+static uint16_t appServerPort = 35000;
 static uint8_t appServerIdType = 1;
 static int appServerSelectedDeviceCode = 1;
 static bool appServerAutoReconnect = false;
@@ -94,21 +94,16 @@ static bool sendConnectPacketForDeviceType(int deviceType) {
 static void sendAllDeviceConnectStatesLikeTconnect() {
   int selected = appServerSelectedDeviceCode;
 
-  // Nhóm thiết bị vào
-  static const int enterList[] = {1, 3, 4, 5, 6, 7, 10, 11, 102};
-  // Nhóm thiết bị ra
-  static const int exitList[]  = {51, 53, 54, 55, 56, 57, 102};
-  // Nhóm loa
-  static const int speakerList[] = {102};
+  // Nhóm thiết bị vào (đã bỏ: Camera vào 10, Camera biển số 11, Máy in vào 7, Loa 102)
+  static const int enterList[] = {1, 3, 4, 5, 6};
+  // Nhóm thiết bị ra (đã bỏ: Máy in ra 57, Loa 102)
+  static const int exitList[]  = {51, 53, 54, 55, 56};
 
   const int* list = enterList;
   int count = (int)(sizeof(enterList) / sizeof(enterList[0]));
   if (selected >= 51 && selected <= 61) {
     list = exitList;
     count = (int)(sizeof(exitList) / sizeof(exitList[0]));
-  } else if (selected == 102) {
-    list = speakerList;
-    count = (int)(sizeof(speakerList) / sizeof(speakerList[0]));
   }
 
   logAppServer("Send connect list count=" + String(count) +
@@ -185,11 +180,12 @@ static bool hasNetworkUplink() {
   return staUp || ethUp;
 }
 
+// Đã bỏ: 7 Máy in vào, 10 Camera vào, 11 Camera biển số vào, 57 Máy in ra, 102 Loa. Thêm: 4 Đèn LED vào, 54 Đèn LED ra.
 static bool isSupportedDeviceCode(int code) {
   switch (code) {
-    case 1: case 2: case 3: case 4: case 5: case 6: case 7: case 8: case 9: case 10: case 11:
-    case 51: case 52: case 53: case 54: case 55: case 56: case 57: case 58: case 59: case 60: case 61:
-    case 101: case 102: case 103:
+    case 1: case 2: case 3: case 4: case 5: case 6: case 8: case 9:
+    case 51: case 52: case 53: case 54: case 55: case 56: case 58: case 59: case 60: case 61:
+    case 101: case 103:
       return true;
     default:
       return false;
@@ -476,7 +472,7 @@ static bool handleAppServerPacket(const String& packetJson, String* errorMessage
 
 static void loadAppServerConfig() {
   appServerIp = "";
-  appServerPort = 0;
+  appServerPort = 35000;
   appServerIdType = 1;
   appServerSelectedDeviceCode = 1;
   // Mặc định KHÔNG auto-reconnect để tránh loop vô hạn khi IP/Port sai.
@@ -494,7 +490,7 @@ static void loadAppServerConfig() {
   if (err != DeserializationError::Ok) return;
 
   appServerIp = doc["ip"].as<String>();
-  appServerPort = static_cast<uint16_t>(doc["port"] | 0);
+  appServerPort = static_cast<uint16_t>(doc["port"] | 35000);
   int selectedCode = doc["selected_device_code"] | 0;
   if (isSupportedDeviceCode(selectedCode)) {
     applySelectedDeviceCode(selectedCode);
@@ -579,16 +575,24 @@ static bool appServerConnectNow() {
   appServerSentActiveStatesThisSession = false;
   logAppServer("TCP connected. Local=" + appServerClient.localIP().toString() + ":" + String(appServerClient.localPort()));
 
-  // Giống WeighAll: sau khi connect lại TCP, gửi lại connect-state (Code=1)
-  // cho danh sách DeviceType đang active đúng 1 lần để app server set "xanh" lại.
-  if (appServerActiveDeviceTypeCount > 0 && !appServerSentActiveStatesThisSession) {
-    logAppServer("Send active device connect states after TCP connect, count=" + String(appServerActiveDeviceTypeCount));
-    for (int i = 0; i < appServerActiveDeviceTypeCount; i++) {
-      sendConnectPacketForDeviceType(appServerActiveDeviceTypes[i]);
-      delay(30);
-    }
-    appServerSentActiveStatesThisSession = true;
+  // Tự động gửi gói Code=1 cho tất cả 8 thiết bị hiện tại (không cần user chọn hay bấm gửi).
+  // Danh sách cố định: Barrier vào 3, Đèn LED vào 4, Đèn GT vào 5, Lưới HN vào 6,
+  // Barrier ra 53, Đèn LED ra 54, Đèn GT ra 55, Lưới HN ra 56.
+  static const int ALL_DEVICE_TYPES[] = {3, 4, 5, 6, 53, 54, 55, 56};
+  static const int ALL_DEVICE_COUNT = (int)(sizeof(ALL_DEVICE_TYPES) / sizeof(ALL_DEVICE_TYPES[0]));
+
+  appServerActiveDeviceTypeCount = ALL_DEVICE_COUNT;
+  for (int i = 0; i < ALL_DEVICE_COUNT; i++) {
+    appServerActiveDeviceTypes[i] = ALL_DEVICE_TYPES[i];
   }
+
+  logAppServer("Auto-send connect (Code=1) for all " + String(ALL_DEVICE_COUNT) + " device types");
+  for (int i = 0; i < appServerActiveDeviceTypeCount; i++) {
+    sendConnectPacketForDeviceType(appServerActiveDeviceTypes[i]);
+    delay(30);
+  }
+  appServerSentActiveStatesThisSession = true;
+  appServerLastHeartbeatMs = millis();
   return true;
 }
 

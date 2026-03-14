@@ -192,16 +192,13 @@
     /* ══════════════════════════════════════════════════ */
     const APP_DEVICE_TYPES = [
       { name: 'Barrier vào', code: 3 },
+      { name: 'Đèn LED vào', code: 4 },
       { name: 'Đèn giao thông vào', code: 5 },
       { name: 'Lưới hồng ngoại vào', code: 6 },
-      { name: 'Máy in vào', code: 7 },
-      { name: 'Camera vào', code: 10 },
-      { name: 'Camera nhận diện biển số vào', code: 11 },
       { name: 'Barrier ra', code: 53 },
+      { name: 'Đèn LED ra', code: 54 },
       { name: 'Đèn giao thông ra', code: 55 },
-      { name: 'Lưới hồng ngoại ra', code: 56 },
-      { name: 'Máy in ra', code: 57 },
-      { name: 'Loa', code: 102 }
+      { name: 'Lưới hồng ngoại ra', code: 56 }
     ];
 
     const APP_DEFAULT_DEVICE_CODE = 3;
@@ -217,27 +214,8 @@
       if (!tableBody) return;
 
       tableBody.innerHTML = APP_DEVICE_TYPES.map(item => `
-        <tr data-device-code="${item.code}">
-          <td>${item.name}</td>
-          <td>
-            <span class="device-conn-dot disconnected" id="deviceConnDot-${item.code}"></span>
-            <span class="device-conn-label" id="deviceConnLabel-${item.code}">Chưa kết nối</span>
-          </td>
-          <td>
-            <button class="btn btn-small btn-primary" type="button" onclick="selectAppDeviceType(${item.code})">Chọn</button>
-          </td>
-        </tr>
+        <tr><td>${item.name}</td></tr>
       `).join('');
-
-      // Áp dụng lại trạng thái chọn/bỏ chọn hiện tại
-      document.querySelectorAll('#deviceTypeTable tbody tr').forEach(row => {
-        const rowCode = parseInt(row.getAttribute('data-device-code') || '0', 10);
-        const selected = appServerSelectedDeviceCodes.has(rowCode);
-        row.classList.toggle('selected', selected);
-        const btn = row.querySelector('button');
-        if (btn) btn.textContent = selected ? 'Đã chọn' : 'Chọn';
-      });
-      updateDeviceTypeConnectionIndicators(false);
     }
 
     function selectAppDeviceType(deviceCode, syncCode = true) {
@@ -282,14 +260,12 @@
       const ip = document.getElementById('appServerIp')?.value?.trim() || '';
       const port = parseInt(document.getElementById('appServerPort')?.value || '0', 10);
       const idType = parseInt(document.getElementById('appServerIdType')?.value || String(APP_DEFAULT_DEVICE_CODE), 10);
-      const autoReconnect = !!document.getElementById('appServerAutoReconnect')?.checked;
       return {
         ip,
         port: Number.isNaN(port) ? 0 : port,
         id_type: Number.isNaN(idType) ? APP_DEFAULT_DEVICE_CODE : idType,
-        // Mã thiết bị được chọn trong bảng (DeviceType)
         selected_device_code: appServerSelectedDeviceCode,
-        auto_reconnect: autoReconnect
+        auto_reconnect: true
       };
     }
 
@@ -306,7 +282,6 @@
         appServerSelectedDeviceCode = APP_DEFAULT_DEVICE_CODE;
       }
       document.getElementById('appServerIdType').value = data.id_type || appServerSelectedDeviceCode;
-      document.getElementById('appServerAutoReconnect').checked = !!data.auto_reconnect;
 
       // Cập nhật lại UI bảng
       renderDeviceTypeTable();
@@ -382,29 +357,45 @@
       }
     }
 
-    async function saveAppServerConfig() {
+    async function saveAndConnectAppServer() {
       const msgEl = document.getElementById('appServerMessage');
-      const payload = {
-        ...getAppServerPayloadFromForm(),
-        enabled: false
-      };
+      const payload = getAppServerPayloadFromForm();
 
       if (!payload.ip) { msgEl.textContent = 'Vui lòng nhập IP server.'; return; }
       if (payload.port < 1 || payload.port > 65535) { msgEl.textContent = 'Port phải từ 1..65535.'; return; }
-      if (!APP_DEVICE_TYPE_CODE_SET.has(payload.selected_device_code)) { msgEl.textContent = 'Thiết bị chưa hợp lệ.'; return; }
 
-      msgEl.textContent = 'Đang lưu cấu hình server...';
+      msgEl.textContent = 'Đang lưu và kết nối server...';
       try {
-        const res = await fetch('/api/app-server/config', {
+        const configPayload = {
+          ...payload,
+          enabled: true,
+          auto_reconnect: true
+        };
+        const resConfig = await fetch('/api/app-server/config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify(configPayload)
         });
-        const data = await res.json();
-        msgEl.textContent = res.ok ? (data.message || 'Đã lưu cấu hình server.') : (data.error || 'Lưu thất bại.');
+        const dataConfig = await resConfig.json();
+        if (!resConfig.ok) {
+          msgEl.textContent = dataConfig.error || 'Lưu cấu hình thất bại.';
+          await refreshAppServerStatus();
+          return;
+        }
+
+        const resConnect = await fetch('/api/app-server/connect', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ip: payload.ip, port: payload.port, auto_reconnect: true })
+        });
+        const dataConnect = await resConnect.json();
+        msgEl.textContent = resConnect.ok
+          ? (dataConnect.message || 'Đã lưu và kết nối server. Gói Code=1 tự gửi cho 8 thiết bị.')
+          : (dataConnect.error || dataConnect.message || 'Kết nối thất bại.');
       } catch (_) {
-        msgEl.textContent = 'Lỗi khi lưu cấu hình server.';
+        msgEl.textContent = 'Lỗi khi lưu hoặc kết nối server.';
       }
+      await refreshAppServerStatus();
     }
 
     async function connectAppServer() {

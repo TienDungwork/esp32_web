@@ -189,14 +189,12 @@
 
             <div class="device-type-card">
               <h3>Bảng thiết bị</h3>
-              <p class="device-type-subtitle">Chọn loại thiết bị cần kết nối, hệ thống sẽ tự mapping DeviceType.</p>
+              <p class="device-type-subtitle">Khi lưu IP server, hệ thống tự kết nối và gửi gói Code=1 cho tất cả thiết bị sau.</p>
               <div class="device-type-table-wrap">
                 <table class="device-type-table" id="deviceTypeTable">
                   <thead>
                     <tr>
                       <th>Tên thiết bị</th>
-                      <th>Trạng thái</th>
-                      <th>Chọn</th>
                     </tr>
                   </thead>
                   <tbody></tbody>
@@ -211,32 +209,13 @@
               </div>
               <div class="form-group">
                 <label>Port:</label>
-                <input type="number" id="appServerPort" placeholder="5000" min="1" max="65535">
+                <input type="number" id="appServerPort" placeholder="35000" min="1" max="65535">
               </div>
             </div>
 
-            <div class="form-group checkbox-group" style="margin-bottom:6px">
-              <label>
-                <input type="checkbox" id="appServerAutoReconnect" checked>
-                Tự động kết nối lại khi mất kết nối
-              </label>
-            </div>
-
-            <div class="server-actions-grid">
-              <button class="btn btn-primary" onclick="loadAppServerConfig()">
-                <i class="fas fa-download"></i> Tải cấu hình
-              </button>
-              <button class="btn btn-success" onclick="saveAppServerConfig()">
-                <i class="fas fa-save"></i> Lưu cấu hình
-              </button>
-              <button class="btn btn-success" onclick="connectAppServer()">
-                <i class="fas fa-plug"></i> Kết nối
-              </button>
-              <button class="btn btn-primary" onclick="sendConnectRequestPacket()">
-                <i class="fas fa-paper-plane"></i> Gửi yêu cầu kết nối
-              </button>
-              <button class="btn btn-danger" onclick="disconnectAppServer()">
-                <i class="fas fa-unlink"></i> Ngắt kết nối
+            <div class="form-actions" style="margin-top:10px">
+              <button class="btn btn-success" onclick="saveAndConnectAppServer()">
+                <i class="fas fa-save"></i> Lưu
               </button>
               <button class="btn btn-secondary" onclick="refreshAppServerStatus()">
                 <i class="fas fa-sync-alt"></i> Làm mới
