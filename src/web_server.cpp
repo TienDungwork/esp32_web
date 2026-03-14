@@ -180,16 +180,9 @@ static bool hasNetworkUplink() {
   return staUp || ethUp;
 }
 
-// Đã bỏ: 7 Máy in vào, 10 Camera vào, 11 Camera biển số vào, 57 Máy in ra, 102 Loa. Thêm: 4 Đèn LED vào, 54 Đèn LED ra.
+// Chỉ Loa (102) và Máy in (7).
 static bool isSupportedDeviceCode(int code) {
-  switch (code) {
-    case 1: case 2: case 3: case 4: case 5: case 6: case 8: case 9:
-    case 51: case 52: case 53: case 54: case 55: case 56: case 58: case 59: case 60: case 61:
-    case 101: case 103:
-      return true;
-    default:
-      return false;
-  }
+  return (code == 7 || code == 102);
 }
 
 static void applySelectedDeviceCode(int code) {
@@ -575,10 +568,8 @@ static bool appServerConnectNow() {
   appServerSentActiveStatesThisSession = false;
   logAppServer("TCP connected. Local=" + appServerClient.localIP().toString() + ":" + String(appServerClient.localPort()));
 
-  // Tự động gửi gói Code=1 cho tất cả 8 thiết bị hiện tại (không cần user chọn hay bấm gửi).
-  // Danh sách cố định: Barrier vào 3, Đèn LED vào 4, Đèn GT vào 5, Lưới HN vào 6,
-  // Barrier ra 53, Đèn LED ra 54, Đèn GT ra 55, Lưới HN ra 56.
-  static const int ALL_DEVICE_TYPES[] = {3, 4, 5, 6, 53, 54, 55, 56};
+  // Tự động gửi gói Code=1 chỉ cho Loa (102) và Máy in (7).
+  static const int ALL_DEVICE_TYPES[] = {102, 7};
   static const int ALL_DEVICE_COUNT = (int)(sizeof(ALL_DEVICE_TYPES) / sizeof(ALL_DEVICE_TYPES[0]));
 
   appServerActiveDeviceTypeCount = ALL_DEVICE_COUNT;

@@ -191,17 +191,11 @@
     /*             APP SERVER TCP CONFIG                 */
     /* ══════════════════════════════════════════════════ */
     const APP_DEVICE_TYPES = [
-      { name: 'Barrier vào', code: 3 },
-      { name: 'Đèn LED vào', code: 4 },
-      { name: 'Đèn giao thông vào', code: 5 },
-      { name: 'Lưới hồng ngoại vào', code: 6 },
-      { name: 'Barrier ra', code: 53 },
-      { name: 'Đèn LED ra', code: 54 },
-      { name: 'Đèn giao thông ra', code: 55 },
-      { name: 'Lưới hồng ngoại ra', code: 56 }
+      { name: 'Loa', code: 102 },
+      { name: 'Máy in', code: 7 }
     ];
 
-    const APP_DEFAULT_DEVICE_CODE = 3;
+    const APP_DEFAULT_DEVICE_CODE = 102;
 
     const APP_DEVICE_TYPE_CODE_SET = new Set(APP_DEVICE_TYPES.map(x => x.code));
     // Danh sách mã DeviceType đang được chọn (cache để gửi connect sau)
