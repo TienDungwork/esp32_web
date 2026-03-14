@@ -18,8 +18,8 @@ IPAddress wifi_subnet;
 IPAddress wifi_dns1;
 IPAddress wifi_dns2;
 
-IPAddress eth_ip(192, 168, 41, 200);
-IPAddress eth_gateway(192, 168, 41, 1);
+IPAddress eth_ip(192, 168, 1, 68);
+IPAddress eth_gateway(192, 168, 1, 1);
 IPAddress eth_subnet(255, 255, 255, 0);
 
 static const char* AP_SSID = "esp32s3";
