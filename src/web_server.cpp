@@ -770,6 +770,27 @@ static void handleAppServerConfigPost() {
   }
   appServerAutoReconnect = autoReconnect;
   appServerEnabled = enabled;
+
+  // Nếu client gửi kèm selected_device_codes (từ checkbox Barrier/Đèn GT)
+  // thì cập nhật luôn danh sách DeviceType đang active để:
+  // - Lưu xuống file config (saveAppServerConfig)
+  // - Dùng ngay cho lần auto-send Code=1 tiếp theo.
+  if (doc.containsKey("selected_device_codes") && doc["selected_device_codes"].is<JsonArray>()) {
+    JsonArray arr = doc["selected_device_codes"].as<JsonArray>();
+    appServerActiveDeviceTypeCount = 0;
+    for (JsonVariant v : arr) {
+      int c = v.as<int>();
+      if (!isSupportedDeviceCode(c) || appServerActiveDeviceTypeCount >= 16) continue;
+      bool dup = false;
+      for (int i = 0; i < appServerActiveDeviceTypeCount; i++) {
+        if (appServerActiveDeviceTypes[i] == c) { dup = true; break; }
+      }
+      if (!dup) {
+        appServerActiveDeviceTypes[appServerActiveDeviceTypeCount++] = c;
+      }
+    }
+  }
+
   saveAppServerConfig();
 
   DynamicJsonDocument resp(256);

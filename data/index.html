@@ -189,7 +189,7 @@
 
             <div class="device-option-checkboxes" style="margin-bottom:14px">
               <label class="checkbox-inline">
-                <input type="checkbox" id="appServerUseBarrier" checked>
+                <input type="checkbox" id="appServerUseBarrier">
                 Barrier (vào + ra)
               </label>
               <label class="checkbox-inline" style="margin-left:16px">
@@ -226,7 +226,10 @@
 
             <div class="form-actions" style="margin-top:10px">
               <button class="btn btn-success" onclick="saveAndConnectAppServer()">
-                <i class="fas fa-save"></i> Lưu
+                <i class="fas fa-save"></i> Lưu cấu hình
+              </button>
+              <button class="btn btn-primary" onclick="sendConnectRequestPacket()" style="margin-left:8px">
+                <i class="fas fa-plug"></i> Gửi yêu cầu kết nối (Code=1)
               </button>
               <button class="btn btn-secondary" onclick="refreshAppServerStatus()">
                 <i class="fas fa-sync-alt"></i> Làm mới

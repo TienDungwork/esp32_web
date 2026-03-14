@@ -256,21 +256,25 @@
       });
     }
 
-    // Danh sách đầy đủ: 3,4,5,6,53,54,55,56.
-    // Nếu chỉ chọn Barrier → gửi Barrier (3,53) + LED + Lưới HN, bỏ Đèn giao thông (5,55).
-    // Nếu chỉ chọn Đèn giao thông → gửi Đèn GT (5,55) + LED + Lưới HN, bỏ Barrier (3,53).
-    // Nếu trạng thái không hợp lệ (cả hai hoặc không cái nào) → gửi đủ 8.
     function getSelectedDeviceCodesFromCheckboxes() {
       const useBarrier = !!document.getElementById('appServerUseBarrier')?.checked;
       const useTraffic = !!document.getElementById('appServerUseTraffic')?.checked;
-      const all = [3, 4, 5, 6, 53, 54, 55, 56];
-      if (useBarrier && !useTraffic) {
-        return all.filter(c => c !== 5 && c !== 55);
+
+      // Mặc định luôn gửi LED + Lưới hồng ngoại vào/ra
+      const baseCodes = [4, 6, 54, 56];
+      const extraCodes = [];
+
+      // Nếu tick Barrier → thêm 2 mã Barrier (vào + ra)
+      if (useBarrier) {
+        extraCodes.push(3, 53);
       }
-      if (useTraffic && !useBarrier) {
-        return all.filter(c => c !== 3 && c !== 53);
+
+      // Nếu tick Đèn giao thông → thêm 2 mã Đèn giao thông (vào + ra)
+      if (useTraffic) {
+        extraCodes.push(5, 55);
       }
-      return all;
+
+      return [...baseCodes, ...extraCodes];
     }
 
     function getAppServerPayloadFromForm() {
@@ -300,32 +304,7 @@
       }
       document.getElementById('appServerIdType').value = data.id_type || appServerSelectedDeviceCode;
 
-      const codes = data.selected_device_codes || [];
-      const hasBarrier = codes.includes(3) || codes.includes(53);
-      const hasTraffic = codes.includes(5) || codes.includes(55);
-      const barrierEl = document.getElementById('appServerUseBarrier');
-      const trafficEl = document.getElementById('appServerUseTraffic');
-      if (barrierEl) barrierEl.checked = codes.length === 0 ? true : !!hasBarrier;
-      if (trafficEl) trafficEl.checked = codes.length === 0 ? true : !!hasTraffic;
-
       renderDeviceTypeTable();
-      const barrierEl = document.getElementById('appServerUseBarrier');
-      const trafficEl = document.getElementById('appServerUseTraffic');
-      if (barrierEl && trafficEl) {
-        const enforceExclusive = (changed) => {
-          if (changed === 'barrier' && barrierEl.checked) {
-            trafficEl.checked = false;
-          } else if (changed === 'traffic' && trafficEl.checked) {
-            barrierEl.checked = false;
-          }
-          if (!barrierEl.checked && !trafficEl.checked) {
-            if (changed === 'barrier') barrierEl.checked = true; else trafficEl.checked = true;
-          }
-        };
-        barrierEl.addEventListener('change', () => enforceExclusive('barrier'));
-        trafficEl.addEventListener('change', () => enforceExclusive('traffic'));
-      }
-
     }
 
     function setAppServerStatusText(connected, confirmed, lastError = '') {
@@ -422,12 +401,15 @@
       if (!payload.ip) { msgEl.textContent = 'Vui lòng nhập IP server.'; return; }
       if (payload.port < 1 || payload.port > 65535) { msgEl.textContent = 'Port phải từ 1..65535.'; return; }
 
-      msgEl.textContent = 'Đang lưu và kết nối server...';
+      msgEl.textContent = 'Đang lưu cấu hình server...';
       try {
+        const selectedDeviceCodes = getSelectedDeviceCodesFromCheckboxes();
         const configPayload = {
           ...payload,
           enabled: true,
-          auto_reconnect: true
+          auto_reconnect: true,
+          // Lưu luôn danh sách DeviceType để firmware dùng cho Heartbeat Code=1
+          selected_device_codes: selectedDeviceCodes
         };
         const resConfig = await fetch('/api/app-server/config', {
           method: 'POST',
@@ -441,23 +423,9 @@
           return;
         }
 
-        const selectedDeviceCodes = getSelectedDeviceCodesFromCheckboxes();
-        const resConnect = await fetch('/api/app-server/connect', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ip: payload.ip,
-            port: payload.port,
-            auto_reconnect: true,
-            selected_device_codes: selectedDeviceCodes
-          })
-        });
-        const dataConnect = await resConnect.json();
-        msgEl.textContent = resConnect.ok
-          ? (dataConnect.message || 'Đã lưu và kết nối server. Gói Code=1 gửi cho ' + selectedDeviceCodes.length + ' thiết bị.')
-          : (dataConnect.error || dataConnect.message || 'Kết nối thất bại.');
+        msgEl.textContent = 'Đã lưu cấu hình server. Muốn gửi gói Code=1 thì bấm nút "Gửi yêu cầu kết nối".';
       } catch (_) {
-        msgEl.textContent = 'Lỗi khi lưu hoặc kết nối server.';
+        msgEl.textContent = 'Lỗi khi lưu cấu hình server.';
       }
       await refreshAppServerStatus();
     }
@@ -495,9 +463,9 @@
 
     async function sendConnectRequestPacket() {
       const msgEl = document.getElementById('appServerMessage');
-      const selectedCodes = Array.from(appServerSelectedDeviceCodes || []);
+      const selectedCodes = getSelectedDeviceCodesFromCheckboxes();
       if (!selectedCodes.length) {
-        msgEl.textContent = 'Vui lòng chọn ít nhất một thiết bị để gửi yêu cầu kết nối.';
+        msgEl.textContent = 'Không có thiết bị nào để gửi yêu cầu kết nối.';
         return;
       }
 
@@ -835,23 +803,6 @@
     /* ══════════════════════════════════════════════════ */
     window.addEventListener('load', () => {
       renderDeviceTypeTable();
-      const barrierEl = document.getElementById('appServerUseBarrier');
-      const trafficEl = document.getElementById('appServerUseTraffic');
-      if (barrierEl && trafficEl) {
-        const enforceExclusive = (changed) => {
-          if (changed === 'barrier' && barrierEl.checked) {
-            trafficEl.checked = false;
-          } else if (changed === 'traffic' && trafficEl.checked) {
-            barrierEl.checked = false;
-          }
-          if (!barrierEl.checked && !trafficEl.checked) {
-            if (changed === 'barrier') barrierEl.checked = true; else trafficEl.checked = true;
-          }
-        };
-        barrierEl.addEventListener('change', () => enforceExclusive('barrier'));
-        trafficEl.addEventListener('change', () => enforceExclusive('traffic'));
-      }
-
       document.querySelectorAll('input[name="trafficState"]').forEach((input) => {
         input.addEventListener('change', () => {
           trafficSelectionDirty = true;
